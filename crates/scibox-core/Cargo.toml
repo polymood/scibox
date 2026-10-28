@@ -1,0 +1,9 @@
+[package]
+name = "scibox-core"
+description = "The shared logic of scibox: units, formulas, calculator, search, and graph math"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

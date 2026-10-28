@@ -1,8 +1,7 @@
-//! The command palette: find a category, a unit, a formula, or a tab by its name.
+//! Search: find a category, a unit, a formula, or a tab by its name.
 
 use crate::formulas::DOMAINS;
 use crate::units::GROUPS;
-use ratatui::widgets::ListState;
 
 pub enum Target {
     /// A tab index.
@@ -37,13 +36,6 @@ impl Entry {
     }
 }
 
-pub struct Palette {
-    pub query: String,
-    pub list: ListState,
-    /// The indices of the entries that agree with the query, best first.
-    pub matches: Vec<usize>,
-}
-
 /// Make the list of all the entries. `tabs` is the list of the tabs that are not converter tabs.
 pub fn entries(tabs: &[(usize, &str)]) -> Vec<Entry> {
     let mut out = Vec::new();
@@ -75,29 +67,16 @@ pub fn entries(tabs: &[(usize, &str)]) -> Vec<Entry> {
     out
 }
 
-impl Palette {
-    pub fn new(entries: &[Entry]) -> Self {
-        let mut p = Palette {
-            query: String::new(),
-            list: ListState::default(),
-            matches: Vec::new(),
-        };
-        p.update(entries);
-        p
-    }
-
-    /// Find the entries that agree with the query again.
-    pub fn update(&mut self, entries: &[Entry]) {
-        let mut scored: Vec<(usize, usize)> = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| score(e, &self.query).map(|s| (s, i)))
-            .collect();
-        // The sort is stable. Thus, entries with the same score keep their order.
-        scored.sort_by_key(|s| std::cmp::Reverse(s.0));
-        self.matches = scored.into_iter().map(|(_, i)| i).collect();
-        self.list.select(Some(0));
-    }
+/// The indices of the entries that agree with the query, best first.
+pub fn find(entries: &[Entry], query: &str) -> Vec<usize> {
+    let mut scored: Vec<(usize, usize)> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| score(e, query).map(|s| (s, i)))
+        .collect();
+    // The sort is stable. Thus, entries with the same score keep their order.
+    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+    scored.into_iter().map(|(_, i)| i).collect()
 }
 
 /// The score of an entry for the query, or `None` if a word of the query is not in the entry.
@@ -129,18 +108,14 @@ mod tests {
     #[test]
     fn search() {
         let all = entries(&[(6, "Calc")]);
-        let mut p = Palette::new(&all);
-        assert_eq!(p.matches.len(), all.len());
+        assert_eq!(find(&all, "").len(), all.len());
         for (query, expected) in [
             ("dbm", "Decibel-milliwatt (dBm)"),
             ("ohm law", "Ohm's law"),
             ("fspl", "Free-space path loss"),
             ("calc", "Calc"),
         ] {
-            p.query = query.into();
-            p.update(&all);
-            let found: Vec<&str> = p
-                .matches
+            let found: Vec<&str> = find(&all, query)
                 .iter()
                 .take(5)
                 .map(|&i| all[i].label.as_str())

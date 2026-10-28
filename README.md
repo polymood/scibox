@@ -2,19 +2,35 @@
 
 # scibox
 
-scibox is a toolbox for engineers and scientists in the terminal.
+scibox is a toolbox for engineers and scientists.
 It contains a unit converter, an engineering formula solver, a graph plotter, and a scientific calculator.
-You can use the keyboard or the mouse.
 
-![Formulas tab: link budget solved for the received power](assets/screenshots/formulas.png)
+scibox has two applications with the same functions:
+
+- **scibox-gui**: a desktop window (egui and wgpu). The graphs have smooth, anti-aliased lines.
+- **scibox-tui**: a terminal application (ratatui). It works with the keyboard and the mouse, also through SSH.
+
+## scibox-gui
+
+![GUI, graph tab: a function, a circle, and the line x = 6](assets/screenshots/gui-graph.png)
+
+| 3D graph | Formulas |
+| --- | --- |
+| ![GUI, graph tab: the surface z = sin(x) cos(y)](assets/screenshots/gui-g3d.png) | ![GUI, formulas tab: link budget](assets/screenshots/gui-formulas.png) |
+| **Converter** | **Calculator** |
+| ![GUI, converter tab: 1 dBm in all the power units](assets/screenshots/gui-converter.png) | ![GUI, calculator tab](assets/screenshots/gui-calc.png) |
+
+## scibox-tui
+
+![TUI, formulas tab: link budget solved for the received power](assets/screenshots/tui-formulas.png)
 
 | Graph | 3D graph |
 | --- | --- |
-| ![Graph tab: a function, a circle, and the line x = 6](assets/screenshots/graph.png) | ![Graph tab: the surface z = sin(x) cos(y)](assets/screenshots/graph3d.png) |
+| ![TUI, graph tab: a function, a circle, and the line x = 6](assets/screenshots/tui-graph.png) | ![TUI, graph tab: the surface z = sin(x) cos(y)](assets/screenshots/tui-graph3d.png) |
 | **Polar and parametric curves** | **Converter** |
-| ![Graph tab: polar and parametric curves](assets/screenshots/curves.png) | ![Converter tab: 20 dBm in all the power units](assets/screenshots/converter.png) |
+| ![TUI, graph tab: polar and parametric curves](assets/screenshots/tui-curves.png) | ![TUI, converter tab: 20 dBm in all the power units](assets/screenshots/tui-converter.png) |
 | **Calculator** | **Go to (Ctrl+P)** |
-| ![Calculator tab with history and keypad](assets/screenshots/calc.png) | ![Go to window: search for "db"](assets/screenshots/palette.png) |
+| ![TUI, calculator tab with history and keypad](assets/screenshots/tui-calc.png) | ![TUI, go to window: search for "db"](assets/screenshots/tui-palette.png) |
 
 ## Features
 
@@ -27,7 +43,7 @@ You can use the keyboard or the mouse.
 - **Graph**: plot functions, equations in x and y, polar curves, parametric curves, and 3D surfaces.
 - **Calculator**: a scientific calculator with a keypad that you can click.
 - **Go to**: press Ctrl+P and type a part of a name to go to a category, a unit, or a formula.
-- **Copy**: copy a result to the clipboard with Ctrl+Y or with a mouse click.
+- **Copy**: copy a result to the clipboard with a mouse click (or Ctrl+Y in the TUI).
 - All the input fields accept expressions, for example `3*12.5`, `2pi`, or `4.7e3`.
 
 ## Install
@@ -35,7 +51,8 @@ You can use the keyboard or the mouse.
 You must have the Rust toolchain (`cargo`).
 
 ```sh
-cargo install --git https://github.com/polymood/scibox
+cargo install --git https://github.com/polymood/scibox scibox-gui
+cargo install --git https://github.com/polymood/scibox scibox-tui
 ```
 
 To build from the source code:
@@ -43,12 +60,30 @@ To build from the source code:
 ```sh
 git clone https://github.com/polymood/scibox
 cd scibox
-cargo run --release
+cargo run --release -p scibox-gui
+cargo run --release -p scibox-tui
 ```
+
+On Linux, scibox-gui needs the X11 or Wayland libraries of your desktop (for example `libxkbcommon-x11-0`).
+
+### Windows and WSL
+
+To make a Windows executable from Linux or WSL, install the `x86_64-pc-windows-gnu` target and MinGW-w64:
+
+```sh
+rustup target add x86_64-pc-windows-gnu
+cargo build --release -p scibox-gui --target x86_64-pc-windows-gnu
+```
+
+The file is `target/x86_64-pc-windows-gnu/release/scibox-gui.exe`. In WSL, this executable uses the real GPU.
+If you run the Linux version in WSL and the window does not open, use X11: `WAYLAND_DISPLAY= scibox-gui`.
 
 ## Use
 
-### General keys
+The two applications have the same tabs and the same functions.
+In scibox-gui, use the mouse as in a usual desktop application. The keys in this section are for scibox-tui.
+
+### General keys (scibox-tui)
 
 | Key | Action |
 | --- | --- |
@@ -142,13 +177,23 @@ scibox sends the copied text to the terminal with the OSC 52 sequence.
 Most terminals accept this sequence (Windows Terminal, kitty, WezTerm, iTerm2, and tmux with `set-clipboard on`).
 scibox also gives the text to the first available program: `clip.exe` (WSL), `pbcopy`, `wl-copy`, `xclip`, or `xsel`.
 
+## Project structure
+
+| Crate | Contents |
+| --- | --- |
+| `crates/scibox-core` | All the logic: units, formulas, calculator, search, graph math. No drawing. |
+| `crates/scibox-gui` | The desktop application (egui, eframe, wgpu). |
+| `crates/scibox-tui` | The terminal application (ratatui). |
+
+A new unit or formula in `scibox-core` is available in the two applications.
+
 ## Add a unit
 
-All the unit data is in `src/units.rs`.
+All the unit data is in `crates/scibox-core/src/units.rs`.
 The first unit of each category is the base unit.
 The factor of a unit is the value of 1 unit in the base unit.
 
-1. Open `src/units.rs`.
+1. Open `crates/scibox-core/src/units.rs`.
 2. Find the category.
 3. Add one line to the list of units:
 
@@ -164,16 +209,16 @@ For units that do not have a simple factor, use these functions:
 - `inverse(name, symbol, k)`: base = k / value (fuel consumption).
 - `log(name, symbol, reference, k)`: base = reference × 10^(value / k) (dBm: reference 0.001 W, k 10).
 
-To add a category, write a `const` block in `src/units.rs` and add its name to a group in `GROUPS`.
+To add a category, write a `const` block in `crates/scibox-core/src/units.rs` and add its name to a group in `GROUPS`.
 To add a converter tab, add a new `Group` to `GROUPS`.
 
 ## Add a formula
 
-All the formulas are in `src/formulas.rs`.
+All the formulas are in `crates/scibox-core/src/formulas.rs`.
 A formula has a name, an equation text, a function, and a list of variables.
 The function calculates the first variable `x[0]` from the other variables `x[1]`, `x[2]`, and so on.
 
-1. Open `src/formulas.rs`.
+1. Open `crates/scibox-core/src/formulas.rs`.
 2. Find the domain.
 3. Add the formula:
 
@@ -200,7 +245,7 @@ cargo test
 - The test `round_trip_all_units` converts each unit to the base unit and back.
 - The test `solve_all_formulas` solves each formula for each variable.
 
-Thus, an incorrect line in `src/units.rs` or in `src/formulas.rs` causes a test failure.
+Thus, an incorrect line in `units.rs` or in `formulas.rs` causes a test failure.
 
 ## License
 

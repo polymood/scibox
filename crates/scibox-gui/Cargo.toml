@@ -1,0 +1,11 @@
+[package]
+name = "scibox-gui"
+description = "scibox with a GUI (egui + wgpu): unit converter, formula solver, graph plotter, and scientific calculator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+eframe = "0.37.0"
+scibox-core = { path = "../scibox-core" }

@@ -1,0 +1,11 @@
+[package]
+name = "scibox-tui"
+description = "scibox in the terminal: unit converter, formula solver, graph plotter, and scientific calculator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+scibox-core = { path = "../scibox-core" }
+ratatui = "0.30.2"

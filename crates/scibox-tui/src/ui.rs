@@ -1,12 +1,12 @@
-use crate::calc::{self, fmt};
-use crate::formulas::DOMAINS;
-use crate::units::GROUPS;
 use crate::{App, KEYS, Kind};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
+use scibox_core::calc::{self, fmt};
+use scibox_core::formulas::DOMAINS;
+use scibox_core::units::GROUPS;
 
 pub const ACCENT: Color = Color::Cyan;
 
@@ -248,18 +248,18 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
         .max()
         .unwrap_or(1);
     let items = fm.vars.iter().enumerate().map(|(i, var)| {
-        let (radio, value) = if i == app.unknown {
+        let (radio, value) = if i == app.form.unknown {
             let text = solved.as_ref().map(|v| fmt(*v)).unwrap_or("?".into());
             (
                 Span::from("◉ ").green(),
                 Span::from(format!("{text:<16}")).green().bold(),
             )
         } else {
-            let mut text = app.fin[i].clone();
+            let mut text = app.form.text[i].clone();
             if app.focus == 2 && app.sel(2) == i {
                 text.push('█');
             }
-            let ok = calc::eval(&app.fin[i], &app.ctx).is_ok();
+            let ok = calc::eval(&app.form.text[i], &app.ctx).is_ok();
             let span = Span::from(format!("{text:<16}"));
             (Span::from("○ "), if ok { span } else { span.red() })
         };
@@ -290,14 +290,14 @@ fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
     let mode = if app.ctx.deg { " DEG " } else { " RAD " };
     let input_block = block(" Expression ", true).title(Line::from(mode).right_aligned());
     f.render_widget(
-        Paragraph::new(input_line(&app.calc_input, true)).block(input_block),
+        Paragraph::new(input_line(&app.calc.input, true)).block(input_block),
         input_area,
     );
 
     // History: show the most recent lines at the bottom.
     let visible = history_area.height.saturating_sub(2) as usize / 2;
-    let skip = app.history.len().saturating_sub(visible);
-    let lines: Vec<Line> = app.history[skip..]
+    let skip = app.calc.history.len().saturating_sub(visible);
+    let lines: Vec<Line> = app.calc.history[skip..]
         .iter()
         .flat_map(|(expr, result)| {
             let result = if result.starts_with("Error") {

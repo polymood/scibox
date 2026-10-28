@@ -1,14 +1,8 @@
-mod calc;
-#[rustfmt::skip]
-mod formulas;
 mod graph;
 mod palette;
 mod ui;
-mod units;
 
-use calc::Ctx;
-use formulas::{DOMAINS, Formula};
-use palette::{Entry, Palette, Target};
+use palette::Palette;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
     KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -16,17 +10,12 @@ use ratatui::crossterm::event::{
 use ratatui::crossterm::execute;
 use ratatui::layout::{Position, Rect};
 use ratatui::widgets::ListState;
-use units::{Category, Conv, GROUPS};
-
-/// The calculator keypad, row by row (6 x 6).
-pub const KEYS: [&str; 36] = [
-    "7", "8", "9", "/", "(", ")", //
-    "4", "5", "6", "*", "^", "√", //
-    "1", "2", "3", "-", "π", "e", //
-    "0", ".", "ans", "+", "C", "⌫", //
-    "sin", "cos", "tan", "ln", "log", "=", //
-    "asin", "acos", "atan", "exp", "x²", "DEG", //
-];
+use scibox_core::calc::{self, Ctx};
+use scibox_core::formulas::{DOMAINS, Formula};
+use scibox_core::search::{self, Entry, Target};
+pub use scibox_core::state::KEYS;
+use scibox_core::state::{self, Calculator, FormulaInputs};
+use scibox_core::units::{Category, GROUPS};
 
 // The tabs after the converter tabs (one tab for each group in `GROUPS`).
 pub const FORMULAS_TAB: usize = GROUPS.len();
@@ -67,13 +56,8 @@ pub struct App {
     /// Converter: category, "from" unit, result. Formulas: domain, formula, variable.
     pub lists: [ListState; 3],
     pub input: String,
-    /// The text of each formula variable.
-    pub fin: Vec<String>,
-    /// The formula variable that the solver calculates.
-    pub unknown: usize,
-    /// The formula variables that the user changed, the most recent last.
-    edited: Vec<usize>,
-    /// Graph: the items, then the settings of the sidebar (see `graph::SETTINGS`).
+    pub form: FormulaInputs,
+    /// Graph: the items, then the settings of the sidebar (see `plot::SETTINGS`).
     pub graph: [String; 9],
     /// The graph line style: an index in `graph::MARKERS`.
     pub marker: usize,
@@ -81,10 +65,9 @@ pub struct App {
     pub view: (f64, f64),
     /// The y range of the last 2D graph.
     pub y_shown: (f64, f64),
-    pub calc_input: String,
-    pub history: Vec<(String, String)>,
+    pub calc: Calculator,
     pub ctx: Ctx,
-    /// True just after a new selection or "=". Then the next character replaces the text.
+    /// True just after the selection of a formula variable. Then the next character replaces the text.
     fresh: bool,
     pub pressed: Option<usize>,
     /// The last mouse position during a drag on the graph.
@@ -104,18 +87,15 @@ impl App {
             focus: 0,
             lists: Default::default(),
             input: String::new(),
-            fin: Vec::new(),
-            unknown: 0,
-            edited: Vec::new(),
+            form: FormulaInputs::new(&DOMAINS[0].formulas[0]),
             graph: std::array::from_fn(|i| match i {
                 0 => "2sin(x); x^2 + y^2 = 9; x = 6".into(),
-                i => graph::SETTINGS[i - 1].1.into(),
+                i => scibox_core::plot::SETTINGS[i - 1].1.into(),
             }),
             marker: 0,
             view: (0.6, 0.6),
             y_shown: (-1.0, 1.0),
-            calc_input: String::new(),
-            history: Vec::new(),
+            calc: Calculator::default(),
             ctx: Ctx {
                 deg: true,
                 ..Default::default()
@@ -123,7 +103,7 @@ impl App {
             fresh: false,
             pressed: None,
             drag: None,
-            entries: palette::entries(&[
+            entries: search::entries(&[
                 (FORMULAS_TAB, "Formulas"),
                 (GRAPH_TAB, "Graph"),
                 (CALC_TAB, "Calc"),
@@ -175,50 +155,14 @@ impl App {
         }
     }
 
-    /// The converter value of the input, or an error message. An empty input is 1.
-    pub fn value(&self) -> Result<f64, String> {
-        if self.input.is_empty() {
-            Ok(1.0)
-        } else {
-            calc::eval(&self.input, &self.ctx)
-        }
-    }
-
     /// The converter results: the input value in each unit of the category.
     pub fn results(&self) -> Result<Vec<String>, String> {
-        let units = self.category().units;
-        let from = &units[self.sel(1)];
-        if let Conv::Radix(_) = from.conv {
-            let input = if self.input.is_empty() {
-                "1"
-            } else {
-                &self.input
-            };
-            return units
-                .iter()
-                .map(|to| units::radix_convert(input, from, to))
-                .collect();
-        }
-        let v = self.value()?;
-        Ok(units
-            .iter()
-            .map(|to| calc::fmt(units::convert(v, from, to)))
-            .collect())
+        state::convert_all(self.category(), self.sel(1), &self.input, &self.ctx)
     }
 
     /// Solve the formula for the unknown variable.
     pub fn solve(&self) -> Result<f64, String> {
-        let fm = self.formula();
-        let mut x = vec![0.0; fm.vars.len()];
-        for (i, text) in self.fin.iter().enumerate() {
-            if i != self.unknown {
-                x[i] = calc::eval(text, &self.ctx)
-                    .map_err(|e| format!("{}: {e}", fm.vars[i].symbol))?;
-            }
-        }
-        let guess =
-            calc::eval(&self.fin[self.unknown], &self.ctx).unwrap_or(fm.vars[self.unknown].default);
-        formulas::solve(fm, &mut x, self.unknown, guess)
+        self.form.solve(self.formula(), &self.ctx)
     }
 
     fn set_tab(&mut self, tab: usize) {
@@ -246,19 +190,12 @@ impl App {
     /// Put the default values of the formula in the inputs. Solve for the first variable.
     fn load_formula(&mut self) {
         let fm = self.formula();
-        let mut x: Vec<f64> = fm.vars.iter().map(|v| v.default).collect();
-        x[0] = (fm.f)(&x);
-        self.fin = x.iter().map(|&v| calc::fmt(v)).collect();
-        self.unknown = 0;
-        self.edited.clear();
-        self.lists[2].select(Some(1.min(x.len() - 1)));
+        self.form = FormulaInputs::new(fm);
+        self.lists[2].select(Some(1.min(fm.vars.len() - 1)));
     }
 
     fn set_unknown(&mut self, i: usize) {
-        if let Ok(v) = self.solve() {
-            self.fin[self.unknown] = calc::fmt(v);
-        }
-        self.unknown = i;
+        self.form.set_unknown(self.formula(), i, &self.ctx);
     }
 
     /// Move the selection of a pane by `d` rows.
@@ -284,7 +221,7 @@ impl App {
         let text = match self.kind() {
             Kind::Convert => self.results().ok().map(|r| r[self.sel(2)].clone()),
             Kind::Formulas => self.solve().ok().map(calc::fmt),
-            Kind::Calc => self.history.last().map(|h| h.1.clone()),
+            Kind::Calc => self.calc.history.last().map(|h| h.1.clone()),
             Kind::Graph => None,
         };
         if let Some(t) = text {
@@ -299,27 +236,17 @@ impl App {
             Kind::Convert => Some(&mut self.input),
             Kind::Formulas => {
                 let i = self.sel(2);
-                if i == self.unknown {
-                    // Solve for the variable that the user did not change for the longest time.
-                    let age = |j: &usize| {
-                        self.edited
-                            .iter()
-                            .position(|e| e == j)
-                            .map_or(-1, |p| p as isize)
-                    };
-                    let other = (0..self.fin.len()).filter(|&j| j != i).min_by_key(age)?;
-                    self.set_unknown(other);
-                    self.status = Some(format!("Solve for {}", self.formula().vars[other].symbol));
+                let fm = self.formula();
+                if let Some(other) = self.form.edit(fm, i, &self.ctx) {
+                    self.status = Some(format!("Solve for {}", fm.vars[other].symbol));
                 }
-                self.edited.retain(|&e| e != i);
-                self.edited.push(i);
                 if std::mem::take(&mut self.fresh) {
-                    self.fin[i].clear();
+                    self.form.text[i].clear();
                 }
-                Some(&mut self.fin[i])
+                Some(&mut self.form.text[i])
             }
             Kind::Graph => Some(&mut self.graph[self.focus]),
-            Kind::Calc => Some(&mut self.calc_input),
+            Kind::Calc => Some(&mut self.calc.input),
         }
     }
 
@@ -349,12 +276,12 @@ impl App {
             KeyCode::Enter => match kind {
                 Kind::Convert if self.focus == 2 => self.use_result(self.sel(2)),
                 Kind::Formulas => self.set_unknown(self.sel(2)),
-                Kind::Calc => self.evaluate(),
+                Kind::Calc => self.calc.evaluate(&mut self.ctx),
                 _ => {}
             },
             KeyCode::Backspace => self.press("⌫"),
             KeyCode::Delete => self.press("C"),
-            KeyCode::Char(c) if !ctrl && kind == Kind::Calc => self.type_text(&c.to_string()),
+            KeyCode::Char(c) if !ctrl && kind == Kind::Calc => self.calc.type_text(&c.to_string()),
             KeyCode::Char(c) if !ctrl => {
                 if let Some(s) = self.input_mut() {
                     s.push(c);
@@ -409,57 +336,18 @@ impl App {
         }
     }
 
-    /// Do the action of a keypad key. The keyboard uses this function too.
+    /// Clear (`C`) or delete the last character (`⌫`) of the input. In the calculator, do the action of any key.
     fn press(&mut self, key: &str) {
-        match key {
-            "C" => {
-                if let Some(s) = self.input_mut() {
-                    s.clear();
-                }
-            }
-            "⌫" => {
-                if let Some(s) = self.input_mut() {
+        if self.kind() == Kind::Calc {
+            return self.calc.press(key, &mut self.ctx);
+        }
+        if let Some(s) = self.input_mut() {
+            match key {
+                "C" => s.clear(),
+                _ => {
                     s.pop();
                 }
             }
-            "=" => self.evaluate(),
-            "DEG" => self.ctx.deg = !self.ctx.deg,
-            "x²" => self.type_text("^2"),
-            "√" => self.type_text("sqrt("),
-            "π" => self.type_text("pi"),
-            // A function name gets an opening parenthesis.
-            f if f.len() > 1 && f != "ans" && f.chars().all(char::is_alphabetic) => {
-                self.type_text(&format!("{f}("))
-            }
-            s => self.type_text(s),
-        }
-    }
-
-    /// Add text to the calculator input.
-    fn type_text(&mut self, s: &str) {
-        if self.fresh && !s.starts_with(['+', '-', '*', '/', '^', '%', '!']) {
-            self.calc_input.clear();
-        }
-        self.fresh = false;
-        self.calc_input.push_str(s);
-    }
-
-    fn evaluate(&mut self) {
-        if self.calc_input.is_empty() {
-            return;
-        }
-        match calc::eval(&self.calc_input, &self.ctx) {
-            Ok(v) => {
-                let result = calc::fmt(v);
-                self.history
-                    .push((std::mem::take(&mut self.calc_input), result.clone()));
-                self.ctx.ans = v;
-                self.calc_input = result;
-                self.fresh = true;
-            }
-            Err(e) => self
-                .history
-                .push((self.calc_input.clone(), format!("Error: {e}"))),
         }
     }
 
@@ -540,7 +428,7 @@ impl App {
                     } else if pane == 2 && pos.x <= self.areas.panes[2].x + 2 {
                         // The radio button at the start of a variable row.
                         self.set_unknown(i);
-                    } else if pane == 2 && i == self.unknown {
+                    } else if pane == 2 && i == self.form.unknown {
                         self.copy_current();
                     }
                     return;
@@ -577,7 +465,7 @@ impl App {
         };
         let (dx, dy) = (col as f64 - c0 as f64, row as f64 - r0 as f64);
         self.drag = Some((col, row));
-        if graph::is_3d(&self.graph[0]) {
+        if scibox_core::plot::is_3d(&self.graph[0]) {
             self.view.0 += dx * 0.08;
             self.view.1 = (self.view.1 + dy * 0.08).clamp(0.0, std::f64::consts::FRAC_PI_2);
             return;
