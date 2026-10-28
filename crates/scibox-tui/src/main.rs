@@ -63,6 +63,8 @@ pub struct App {
     pub marker: usize,
     /// The 3D view angles (yaw, pitch) in radians.
     pub view: (f64, f64),
+    /// The 3D surface mode: an index in `graph::SURFACE_MODES`.
+    pub surface: usize,
     /// The y range of the last 2D graph.
     pub y_shown: (f64, f64),
     pub calc: Calculator,
@@ -94,6 +96,7 @@ impl App {
             }),
             marker: 0,
             view: (0.6, 0.6),
+            surface: 0,
             y_shown: (-1.0, 1.0),
             calc: Calculator::default(),
             ctx: Ctx {
@@ -264,7 +267,7 @@ impl App {
             KeyCode::Char('y') if ctrl => self.copy_current(),
             KeyCode::Left => self.set_tab((self.tab + TABS - 1) % TABS),
             KeyCode::Right => self.set_tab((self.tab + 1) % TABS),
-            KeyCode::F(2) => self.marker = (self.marker + 1) % graph::MARKERS.len(),
+            KeyCode::F(2) => self.next_style(),
             KeyCode::Tab => self.focus = (self.focus + 1) % self.pane_count(),
             KeyCode::BackTab => {
                 self.focus = (self.focus + self.pane_count() - 1) % self.pane_count()
@@ -402,7 +405,7 @@ impl App {
                 if let Some(i) = self.areas.fields.iter().position(|r| r.contains(pos)) {
                     self.focus = i;
                 } else if self.areas.style.contains(pos) {
-                    self.marker = (self.marker + 1) % graph::MARKERS.len();
+                    self.next_style();
                 } else if self.areas.chart.contains(pos) {
                     self.drag = Some((pos.x, pos.y));
                 }
@@ -455,6 +458,15 @@ impl App {
             }
         } else if let Some(pane) = self.areas.panes.iter().position(|r| r.contains(pos)) {
             self.move_sel(pane, d);
+        }
+    }
+
+    /// Select the next 3D surface mode (for a 3D graph) or the next line style.
+    fn next_style(&mut self) {
+        if scibox_core::plot::is_3d(&self.graph[0]) {
+            self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
+        } else {
+            self.marker = (self.marker + 1) % graph::MARKERS.len();
         }
     }
 

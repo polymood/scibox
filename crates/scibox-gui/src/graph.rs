@@ -22,6 +22,8 @@ const HEIGHTS: [Color32; 5] = [
     Color32::from_rgb(0xe5, 0xc0, 0x7b),
     Color32::from_rgb(0xe0, 0x6c, 0x75),
 ];
+/// The 3D surface modes. F2 selects the next mode.
+pub const SURFACE_MODES: [&str; 3] = ["solid", "solid + mesh", "wireframe"];
 const GRID: Color32 = Color32::from_rgb(0x2a, 0x30, 0x38);
 const LABEL: Color32 = Color32::from_rgb(0x8a, 0x93, 0x9e);
 
@@ -64,6 +66,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                     }
                 });
             ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("3D surface");
+                for (i, mode) in SURFACE_MODES.iter().enumerate() {
+                    ui.selectable_value(&mut app.surface, i, *mode);
+                }
+            });
+            ui.label(RichText::new("F2: next surface mode").weak());
+            ui.add_space(8.0);
             if ui.button("Reset the view").clicked() {
                 for (k, (_, default)) in SETTINGS.iter().enumerate().take(4) {
                     app.graph[k + 1] = default.to_string();
@@ -98,7 +108,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
         };
         match plot::surface(&items) {
             Some(expr) => {
-                draw_3d(&painter, rect, expr, &s, app.view);
+                draw_3d(&painter, rect, expr, &s, app.view, app.surface);
                 if response.dragged() {
                     let d = response.drag_delta();
                     app.view.0 += d.x as f64 * 0.01;
@@ -274,7 +284,15 @@ fn draw_2d(
 }
 
 /// Draw z = f(x, y) as a wireframe. The colors show the height.
-fn draw_3d(painter: &Painter, rect: Rect, expr: &Expr, s: &Settings, view: (f64, f64)) {
+/// `mode` is an index in `SURFACE_MODES`.
+fn draw_3d(
+    painter: &Painter,
+    rect: Rect,
+    expr: &Expr,
+    s: &Settings,
+    view: (f64, f64),
+    mode: usize,
+) {
     let surface = plot::surface_grid(expr, s);
     let scale = (rect.width().min(rect.height()) / 3.4) as f64;
     let c = rect.center();
@@ -294,11 +312,34 @@ fn draw_3d(painter: &Painter, rect: Rect, expr: &Expr, s: &Settings, view: (f64,
             Color32::WHITE,
         );
     }
-    for (h, p, q) in surface.segments() {
-        painter.line_segment(
-            [to_screen(p), to_screen(q)],
-            Stroke::new(1.2, height_color(h)),
-        );
+    if mode == 2 {
+        for (h, p, q) in surface.segments() {
+            painter.line_segment(
+                [to_screen(p), to_screen(q)],
+                Stroke::new(1.2, height_color(h)),
+            );
+        }
+    } else {
+        // The cells come from the farthest to the nearest: a near cell covers the far cells behind it.
+        let to_pos = |(x, y): plot::Point| pos2(c.x + (x * scale) as f32, c.y - (y * scale) as f32);
+        for q in surface.quads(view) {
+            let color = shade(height_color(q.height), q.light);
+            let corners = q.corners.map(to_pos);
+            let mut mesh = egui::Mesh::default();
+            for p in corners {
+                mesh.colored_vertex(p, color);
+            }
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            painter.add(egui::Shape::mesh(mesh));
+            // Separate segments, not a closed line: the joins of a closed line make spikes at sharp corners.
+            if mode == 1 {
+                let edge = Stroke::new(1.0, shade(color, 0.55));
+                for k in 0..4 {
+                    painter.line_segment([corners[k], corners[(k + 1) % 4]], edge);
+                }
+            }
+        }
     }
     let (y0, y1) = s.y.unwrap_or(s.x);
     let info = format!(
@@ -324,6 +365,12 @@ fn draw_3d(painter: &Painter, rect: Rect, expr: &Expr, s: &Settings, view: (f64,
         FontId::proportional(13.0),
         ACCENT,
     );
+}
+
+/// Multiply the brightness of a color by `light`.
+fn shade(c: Color32, light: f64) -> Color32 {
+    let f = |v: u8| (v as f64 * light).round().min(255.0) as u8;
+    Color32::from_rgb(f(c.r()), f(c.g()), f(c.b()))
 }
 
 /// A color from blue (h = 0) to red (h = 1).

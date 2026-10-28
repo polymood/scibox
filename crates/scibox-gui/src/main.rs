@@ -34,6 +34,8 @@ pub struct App {
     pub graph: [String; 9],
     /// The 3D view angles (yaw, pitch) in radians.
     pub view: (f64, f64),
+    /// The 3D surface mode: an index in `graph::SURFACE_MODES`.
+    pub surface: usize,
     calc: Calculator,
     pub ctx: Ctx,
     entries: Vec<Entry>,
@@ -61,6 +63,7 @@ impl App {
                 i => scibox_core::plot::SETTINGS[i - 1].1.into(),
             }),
             view: (0.6, 0.6),
+            surface: 0,
             calc: Calculator::default(),
             ctx: Ctx {
                 deg: true,
@@ -80,6 +83,9 @@ impl App {
             && let Some(&e) = search::find(&app.entries, &query).first()
         {
             app.jump(e);
+        }
+        if let Ok(mode) = std::env::var("SCIBOX_SURFACE") {
+            app.surface = mode.parse().unwrap_or(0) % graph::SURFACE_MODES.len();
         }
         if let Ok(g) = std::env::var("SCIBOX_GRAPH") {
             for (i, part) in g.split('|').enumerate().take(9) {
@@ -473,6 +479,9 @@ impl eframe::App for App {
             i.consume_key(Modifiers::COMMAND, Key::P) || i.consume_key(Modifiers::COMMAND, Key::K)
         }) {
             self.palette = Some((String::new(), 0));
+        }
+        if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
+            self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
         }
         egui::Panel::top("tabs").show(ui, |ui| {
             ui.add_space(4.0);

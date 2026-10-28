@@ -29,7 +29,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         Kind::Graph => {
             crate::graph::draw(f, app, body);
-            " Ctrl+P go to · ←→ tab · Tab next field · F2 line style · wheel: zoom · drag: move or turn"
+            " Ctrl+P go to · ←→ tab · Tab next field · F2 style · wheel: zoom · drag: move or turn"
         }
         Kind::Calc => {
             draw_calc(f, app, body);

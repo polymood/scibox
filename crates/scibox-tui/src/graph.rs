@@ -33,6 +33,16 @@ const HEIGHTS: [Color; 5] = [
     Color::Yellow,
     Color::Red,
 ];
+/// The 3D surface modes. F2 selects the next mode (for a 3D graph).
+pub const SURFACE_MODES: [&str; 2] = ["solid", "wireframe"];
+/// The colors of a solid surface, from low to high (red, green, blue).
+const HEIGHT_RGB: [[u8; 3]; 5] = [
+    [0x61, 0xaf, 0xef],
+    [0x2e, 0xc4, 0xd6],
+    [0x98, 0xc3, 0x79],
+    [0xe5, 0xc0, 0x7b],
+    [0xe0, 0x6c, 0x75],
+];
 /// The sidebar row of each setting. The empty rows separate the groups.
 const SETTING_ROWS: [u16; 8] = [0, 1, 2, 3, 5, 6, 8, 9];
 const STYLE_ROW: u16 = 11;
@@ -94,11 +104,14 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         height: 1,
         ..inner
     };
+    let (label, value) = if plot::is_3d(&app.graph[0]) {
+        ("3D surface", SURFACE_MODES[app.surface])
+    } else {
+        ("line style", MARKERS[app.marker].1)
+    };
     let style = Line::from(vec![
-        Span::from(format!(" {:<14}", "line style")),
-        Span::from(format!(" {} ", MARKERS[app.marker].1))
-            .black()
-            .on_dark_gray(),
+        Span::from(format!(" {label:<14}")),
+        Span::from(format!(" {value} ")).black().on_dark_gray(),
         Span::from(" F2").dark_gray(),
     ]);
     f.render_widget(style, r);
@@ -232,13 +245,16 @@ fn draw_3d(f: &mut Frame, app: &mut App, inner: Rect, expr: &Expr, s: &Settings)
     // but make the view a little wider to fill a wide plot area.
     let ys = 1.75;
     let xs = (ys * area.width as f64 / (2.0 * area.height.max(1) as f64) / 1.5).max(ys * 1.1);
+    let solid = app.surface == 0;
     let canvas = Canvas::default()
         .marker(MARKERS[app.marker].0)
         .x_bounds([-xs, xs])
         .y_bounds([-ys, ys])
         .paint(|ctx| {
-            for (color, p, q) in &segments {
-                ctx.draw(&Segment::new(p.0, p.1, q.0, q.1, *color));
+            if !solid {
+                for (color, p, q) in &segments {
+                    ctx.draw(&Segment::new(p.0, p.1, q.0, q.1, *color));
+                }
             }
             ctx.layer();
             let o = plot::project(plot::ORIGIN, view);
@@ -250,6 +266,9 @@ fn draw_3d(f: &mut Frame, app: &mut App, inner: Rect, expr: &Expr, s: &Settings)
             }
         });
     f.render_widget(canvas, area);
+    if solid {
+        draw_solid(f, area, &surface.quads(view), (xs, ys));
+    }
     let (c, d) = s.y.unwrap_or(s.x);
     let info = format!(
         " x {}..{}   y {}..{}   z {}..{}   drag: turn ",
@@ -261,4 +280,83 @@ fn draw_3d(f: &mut Frame, app: &mut App, inner: Rect, expr: &Expr, s: &Settings)
         short(surface.z.1)
     );
     f.render_widget(Line::from(info).style(Style::new().dark_gray()), info_row);
+}
+
+/// Draw the cells of a solid surface (from the farthest to the nearest) on a pixel grid with 2 pixels in each
+/// terminal cell (top and bottom half). Then show each cell as a half block with two true colors.
+fn draw_solid(f: &mut Frame, area: Rect, quads: &[plot::Quad], (xs, ys): (f64, f64)) {
+    let (w, h) = (area.width as usize, area.height as usize * 2);
+    let mut pixels: Vec<Option<Color>> = vec![None; w * h];
+    let to_pixel = |(x, y): plot::Point| {
+        (
+            (x + xs) / (2.0 * xs) * w as f64,
+            (ys - y) / (2.0 * ys) * h as f64,
+        )
+    };
+    for q in quads {
+        let x = (q.height.clamp(0.0, 1.0) * (HEIGHT_RGB.len() - 1) as f64).min(3.999);
+        let (i, t) = (x as usize, x.fract());
+        let rgb: [u8; 3] = std::array::from_fn(|k| {
+            let c = HEIGHT_RGB[i][k] as f64
+                + (HEIGHT_RGB[i + 1][k] as f64 - HEIGHT_RGB[i][k] as f64) * t;
+            (c * q.light).round().min(255.0) as u8
+        });
+        let color = Color::Rgb(rgb[0], rgb[1], rgb[2]);
+        let c = q.corners.map(to_pixel);
+        for tri in [[c[0], c[1], c[2]], [c[0], c[2], c[3]]] {
+            fill_triangle(&mut pixels, w, h, tri, color);
+        }
+    }
+    let buf = f.buffer_mut();
+    for row in 0..area.height as usize {
+        for col in 0..w {
+            let (top, bottom) = (pixels[2 * row * w + col], pixels[(2 * row + 1) * w + col]);
+            let cell = &mut buf[(area.x + col as u16, area.y + row as u16)];
+            match (top, bottom) {
+                (Some(t), Some(b)) => cell.set_symbol("▀").set_fg(t).set_bg(b),
+                (Some(t), None) => cell.set_symbol("▀").set_fg(t).set_bg(Color::Reset),
+                (None, Some(b)) => cell.set_symbol("▄").set_fg(b).set_bg(Color::Reset),
+                (None, None) => continue,
+            };
+        }
+    }
+}
+
+/// Fill the pixels whose centers are inside the triangle.
+fn fill_triangle(
+    pixels: &mut [Option<Color>],
+    w: usize,
+    h: usize,
+    t: [(f64, f64); 3],
+    color: Color,
+) {
+    let edge = |a: (f64, f64), b: (f64, f64), p: (f64, f64)| {
+        (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)
+    };
+    let area = edge(t[0], t[1], t[2]);
+    if area.abs() < 1e-12 {
+        return;
+    }
+    let (x0, x1) = (
+        t.iter().map(|p| p.0).fold(f64::INFINITY, f64::min),
+        t.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max),
+    );
+    let (y0, y1) = (
+        t.iter().map(|p| p.1).fold(f64::INFINITY, f64::min),
+        t.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max),
+    );
+    for py in (y0.floor().max(0.0) as usize)..(y1.ceil().min(h as f64) as usize) {
+        for px in (x0.floor().max(0.0) as usize)..(x1.ceil().min(w as f64) as usize) {
+            let p = (px as f64 + 0.5, py as f64 + 0.5);
+            let (e0, e1, e2) = (
+                edge(t[1], t[2], p),
+                edge(t[2], t[0], p),
+                edge(t[0], t[1], p),
+            );
+            // Inside if the three edge values have the sign of the area (either orientation).
+            if (e0 * area >= 0.0) && (e1 * area >= 0.0) && (e2 * area >= 0.0) {
+                pixels[py * w + px] = Some(color);
+            }
+        }
+    }
 }

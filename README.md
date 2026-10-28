@@ -139,13 +139,16 @@ For example, the formula "dBm to watt" also converts watts to dBm.
 | t min, t max | The range of t for the polar and parametric curves. | 0, 2pi |
 | 3D samples | The number of grid points on each axis of a 3D surface (2 to 200). | 20 |
 | curve samples | The number of points on a polar or parametric curve (10 to 100000). | 720 |
-| line style | Click it or press F2 to change it. | solid |
+| line style (TUI, 2D) | Click it or press F2 to change it. | solid |
+| 3D surface | Click it or press F2 to change it: solid, solid + mesh (GUI only), or wireframe. | solid |
 
 Press Tab to go to the next setting. Press Delete to clear a setting and use its default value.
 All the settings accept expressions, for example `2pi`.
 
 Turn the mouse wheel on the graph to zoom. Drag the graph to move it.
 For a 3D surface, drag the graph to turn the view.
+In the solid mode, scibox draws the cells of the surface from the farthest to the nearest.
+Thus, a near cell hides the cells behind it. The light comes from the top left, and the color shows the height.
 The trigonometric functions of the graph use radians.
 
 Press F2 to change the line style:

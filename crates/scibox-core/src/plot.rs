@@ -359,6 +359,45 @@ pub fn surface_grid(expr: &Expr, s: &Settings) -> Surface {
 }
 
 impl Surface {
+    /// The cells of the surface for a solid view, from the farthest to the nearest.
+    /// Draw them in this order: a near cell hides the far cells behind it (painter's algorithm).
+    pub fn quads(&self, view: (f64, f64)) -> Vec<Quad> {
+        let p = &self.points;
+        // The light comes from the top left, on the side of the viewer.
+        let light = [-0.35, 0.55, -0.76];
+        let mut out: Vec<Quad> = Vec::new();
+        for i in 0..p.len().saturating_sub(1) {
+            for j in 0..p[i].len().saturating_sub(1) {
+                let (Some(a), Some(b), Some(c), Some(d)) =
+                    (p[i][j], p[i + 1][j], p[i + 1][j + 1], p[i][j + 1])
+                else {
+                    continue;
+                };
+                let v = [a, b, c, d].map(|q| to_view(q, view));
+                // The normal of the cell. Both sides of the surface get light.
+                let (e, f) = (sub(v[2], v[0]), sub(v[3], v[1]));
+                let n = [
+                    e[1] * f[2] - e[2] * f[1],
+                    e[2] * f[0] - e[0] * f[2],
+                    e[0] * f[1] - e[1] * f[0],
+                ];
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-12);
+                let dot = (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).abs() / len;
+                let depth = v.iter().map(|q| q[2]).sum::<f64>() / 4.0;
+                let height = ([a, b, c, d].iter().map(|q| q[2]).sum::<f64>() / 4.0 + 0.8) / 1.6;
+                let corners = v.map(|q| (q[0], q[1]));
+                out.push(Quad {
+                    corners,
+                    height,
+                    light: 0.35 + 0.65 * dot,
+                    depth,
+                });
+            }
+        }
+        out.sort_by(|x, y| y.depth.total_cmp(&x.depth));
+        out
+    }
+
     /// The wireframe: each segment with its mean height from 0 (low) to 1 (high).
     pub fn segments(&self) -> Vec<(f64, [f64; 3], [f64; 3])> {
         let p = &self.points;
@@ -379,17 +418,66 @@ impl Surface {
 }
 
 /// Turn a point of the box by the view angles (yaw, pitch) and project it to the screen (x right, y up).
-pub fn project(p: [f64; 3], (yaw, pitch): (f64, f64)) -> Point {
+pub fn project(p: [f64; 3], view: (f64, f64)) -> Point {
+    let [x, y, _] = to_view(p, view);
+    (x, y)
+}
+
+/// Turn a point of the box by the view angles: x right, y up, and the depth (a high value is far).
+fn to_view(p: [f64; 3], (yaw, pitch): (f64, f64)) -> [f64; 3] {
     let (x1, y1) = (
         p[0] * yaw.cos() - p[1] * yaw.sin(),
         p[0] * yaw.sin() + p[1] * yaw.cos(),
     );
-    (x1, y1 * pitch.sin() + p[2] * pitch.cos())
+    [
+        x1,
+        y1 * pitch.sin() + p[2] * pitch.cos(),
+        y1 * pitch.cos() - p[2] * pitch.sin(),
+    ]
+}
+
+/// A cell of a solid surface on the screen.
+pub struct Quad {
+    /// The four corners on the screen, in order around the cell.
+    pub corners: [Point; 4],
+    /// The mean height, from 0 (low) to 1 (high).
+    pub height: f64,
+    /// The brightness from the light, from 0.35 to 1.
+    pub light: f64,
+    /// The distance from the viewer (a high value is far).
+    pub depth: f64,
+}
+
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quads_far_to_near() {
+        // A flat surface seen from the top (pitch 90°): every cell gets the same light.
+        let e = calc::compile("0").unwrap();
+        let s = Settings {
+            x: (-1.0, 1.0),
+            y: None,
+            t: (0.0, TAU),
+            grid: 4,
+            samples: 10,
+            ans: 0.0,
+        };
+        let surface = surface_grid(&e, &s);
+        let quads = surface.quads((0.3, std::f64::consts::FRAC_PI_2));
+        assert_eq!(quads.len(), 16);
+        let l = quads[0].light;
+        assert!(quads.iter().all(|q| (q.light - l).abs() < 1e-9));
+        // Seen from an angle, the far cells come first.
+        let side = surface_grid(&calc::compile("x * y").unwrap(), &s).quads((0.6, 0.5));
+        assert!(side.windows(2).all(|w| w[0].depth >= w[1].depth));
+        assert!(side[0].depth > side[side.len() - 1].depth);
+    }
 
     #[test]
     fn kinds() {
