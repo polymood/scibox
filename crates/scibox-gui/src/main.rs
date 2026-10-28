@@ -60,11 +60,8 @@ pub struct App {
     /// The typeset equation of the formula.
     equation: math::Cache,
     /// The analysis items that the graph shows (see `graph::SHOW`), and the analysis text.
-    pub show: [bool; 4],
+    pub show: [bool; 3],
     pub report: Vec<(Color32, String)>,
-    /// Export the graph as PNG at the next frame. The export writes its result message in `export_done`.
-    pub export: bool,
-    pub export_done: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl App {
@@ -102,10 +99,8 @@ impl App {
             fresh: false,
             scroll: false,
             equation: math::Cache::default(),
-            show: [true, false, false, true],
+            show: [true, false, false],
             report: Vec::new(),
-            export: false,
-            export_done: Default::default(),
         };
         // Options for the screenshots of the README: go to an entry, set the graph, type in the calculator.
         if let Ok(query) = std::env::var("SCIBOX_GOTO")
@@ -122,11 +117,10 @@ impl App {
             }
         }
         if let Ok(flags) = std::env::var("SCIBOX_SHOW") {
-            for (i, c) in flags.chars().take(4).enumerate() {
+            for (i, c) in flags.chars().take(3).enumerate() {
                 app.show[i] = c == '1';
             }
         }
-        app.export = std::env::var_os("SCIBOX_EXPORT").is_some();
         if let Ok(exprs) = std::env::var("SCIBOX_CALC") {
             for e in exprs.split('|') {
                 app.calc.input = e.into();
@@ -751,13 +745,7 @@ impl eframe::App for App {
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F4)) {
             // Show all the analysis items, or hide them if all are visible.
             let all = !self.show.iter().all(|s| *s);
-            self.show = [all; 4];
-        }
-        if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::S)) && self.tab == GRAPH_TAB {
-            self.export = true;
-        }
-        if let Some(message) = self.export_done.lock().ok().and_then(|mut d| d.take()) {
-            self.status = Some((message, ui.input(|i| i.time)));
+            self.show = [all; 3];
         }
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
             self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
@@ -783,7 +771,7 @@ impl eframe::App for App {
                 _ => {
                     ui.label(
                         RichText::new(
-                            " ←→ tab · Tab focus · ↑↓ select · Enter use/solve/= · Del clear · Ctrl+Y copy · Ctrl+P go to · F2 3D · F3 notation · F4 analysis · Ctrl+S PNG · Esc quit",
+                            " ←→ tab · Tab focus · ↑↓ select · Enter use/solve/= · Del clear · Ctrl+Y copy · Ctrl+P go to · F2 3D · F3 notation · F4 analysis · wheel: zoom · drag: move/turn · Esc quit",
                         )
                         .color(GRAY),
                     );

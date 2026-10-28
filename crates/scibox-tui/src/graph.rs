@@ -231,7 +231,8 @@ fn draw_2d(
                     }
                 }
             }
-            // The analysis: a dotted mean line, ● at the extrema, ○ at the roots, and labels.
+            // The analysis: a dotted mean line, ● at the extrema, ○ at the roots, ▲ and ▼ at the max and the min.
+            // The values are in the sidebar.
             ctx.layer();
             for an in &analysis {
                 let color = CURVES[an.item % CURVES.len()];
@@ -251,20 +252,8 @@ fn draw_2d(
                 for r in &an.roots {
                     ctx.print(r.0, 0.0, Span::from("○").fg(color));
                 }
-                ctx.print(
-                    an.max.0,
-                    an.max.1,
-                    Span::from(format!("▲ max {}", short(an.max.1)))
-                        .fg(color)
-                        .bold(),
-                );
-                ctx.print(
-                    an.min.0,
-                    an.min.1,
-                    Span::from(format!("▼ min {}", short(an.min.1)))
-                        .fg(color)
-                        .bold(),
-                );
+                ctx.print(an.max.0, an.max.1, Span::from("▲").fg(color).bold());
+                ctx.print(an.min.0, an.min.1, Span::from("▼").fg(color).bold());
             }
         });
     f.render_widget(canvas, plot_area);
@@ -364,7 +353,7 @@ fn draw_3d(f: &mut Frame, app: &mut App, inner: Rect, expr: &Expr, s: &Settings)
             let row = ((ys - y) / (2.0 * ys) * area.height as f64) as u16;
             if col < area.width && row < area.height {
                 let r = Rect::new(area.x + col, area.y + row, area.width - col, 1);
-                f.render_widget(Line::from(format!("{mark} {text}")).white().bold(), r);
+                f.render_widget(Line::from(mark).white().bold(), r);
             }
             app.report.push((Color::Gray, format!(" {text}")));
             app.report.push((

@@ -40,7 +40,7 @@ scibox has two applications with the same functions:
 - **Number base**: decimal, hexadecimal, binary, and octal (128-bit integers).
 - **Formulas**: more than 240 formulas in 9 domains (Decibels & RF, Electronics, Mechanics, Structures, Thermal, Fluids, Physics, Chemistry, Optics).
   You can solve each formula for any variable.
-- **Graph**: plot functions, equations in x and y, polar curves, parametric curves, and 3D surfaces. Show the extrema, the roots, and the mean values. Export the graph as PNG (scibox-gui).
+- **Graph**: plot functions, equations in x and y, polar curves, parametric curves, and 3D surfaces. Show the extrema, the roots, and the mean values.
 - **Calculator**: a scientific calculator with a keypad that you can click.
 - **Powers of 10**: the results show as `1.26×10⁻⁶`. Press F3 to select the notation: auto, scientific, or engineering (the exponent is a multiple of 3, as the SI prefixes).
 - **Go to**: press Ctrl+P and type a part of a name to go to a category, a unit, or a formula.
@@ -158,16 +158,10 @@ Press F4 to show or hide the analysis of the functions:
 - **min / max**: the global minimum and maximum, and the local extrema.
 - **roots**: the points where the function crosses zero.
 - **mean**: the mean value of the function on the x range (a dashed line).
-- **labels**: the values next to the markers.
 
 For a 3D surface, the analysis shows the highest point, the lowest point, and the mean value of z.
-The sidebar lists all the values. In scibox-gui, you can show each item separately.
-In scibox-gui, the pointer shows the value of each function at its x position.
-
-#### Export (scibox-gui)
-
-Press Ctrl+S or click "Export PNG" to save the graph as a PNG file.
-The file is in your home folder: `scibox-graph-<time>.png`.
+The graph shows markers only. The sidebar lists all the values. In scibox-gui, you can show each item separately.
+In scibox-gui, the sidebar also shows the value of each function at the x position of the mouse pointer.
 
 Turn the mouse wheel on the graph to zoom. Drag the graph to move it.
 For a 3D surface, drag the graph to turn the view.
