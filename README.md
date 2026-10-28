@@ -1,8 +1,4 @@
-```text
-┌─┐┌─┐┬┌┐ ┌─┐╲ ╱
-└─┐│  │├┴┐│ │ ╳ 
-└─┘└─┘┴└─┘└─┘╱ ╲
-```
+<p align="center"><img src="assets/logo.svg" width="120" alt="scibox logo"></p>
 
 # scibox
 
