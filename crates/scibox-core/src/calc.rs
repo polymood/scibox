@@ -4,6 +4,36 @@
 //! Constants: pi, e, tau, ans.
 //! Functions: see `func`.
 
+/// How to write a result: the powers of 10 of the scientific and the engineering notations.
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
+pub enum Notation {
+    /// Decimals, and a power of 10 only for very large or very small values.
+    #[default]
+    Auto,
+    /// One digit before the point: 1.2e3.
+    Scientific,
+    /// An exponent that is a multiple of 3 (the SI prefixes): 12e3, 1.2e-6.
+    Engineering,
+}
+
+impl Notation {
+    pub fn next(self) -> Self {
+        match self {
+            Notation::Auto => Notation::Scientific,
+            Notation::Scientific => Notation::Engineering,
+            Notation::Engineering => Notation::Auto,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Notation::Auto => "auto",
+            Notation::Scientific => "scientific",
+            Notation::Engineering => "engineering",
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Ctx {
     /// The last result. The name `ans` refers to this value.
@@ -14,6 +44,15 @@ pub struct Ctx {
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub t: Option<f64>,
+    /// The notation of the results.
+    pub notation: Notation,
+}
+
+impl Ctx {
+    /// Write a result in the notation of the context. The text is a valid input (for example 1.2e-6).
+    pub fn fmt(&self, x: f64) -> String {
+        fmt_in(x, self.notation)
+    }
 }
 
 /// Calculate an expression.
@@ -377,6 +416,65 @@ pub fn fmt(x: f64) -> String {
     trim_zeros(&format!("{x:.decimals$}")).to_string()
 }
 
+/// Write a number in a notation, with 12 significant digits. The text is a valid input.
+pub fn fmt_in(x: f64, notation: Notation) -> String {
+    if !x.is_finite() || x == 0.0 || notation == Notation::Auto {
+        return fmt(x);
+    }
+    let exp = x.abs().log10().floor() as i32;
+    let e = match notation {
+        Notation::Engineering => exp - exp.rem_euclid(3),
+        _ => exp,
+    };
+    let mantissa = x / 10f64.powi(e);
+    let decimals = (11 - mantissa.abs().log10().floor() as i32).max(0) as usize;
+    let m = format!("{mantissa:.decimals$}");
+    // The rounding can give 10 (scientific) or 1000 (engineering): then use the next power.
+    let limit = if notation == Notation::Engineering {
+        1000.0
+    } else {
+        10.0
+    };
+    if m.parse::<f64>().is_ok_and(|v| v.abs() >= limit) {
+        let step = if notation == Notation::Engineering {
+            3
+        } else {
+            1
+        };
+        return format!(
+            "{}e{}",
+            trim_zeros(&format!("{:.decimals$}", x / 10f64.powi(e + step))),
+            e + step
+        );
+    }
+    if e == 0 {
+        trim_zeros(&m).to_string()
+    } else {
+        format!("{}e{e}", trim_zeros(&m))
+    }
+}
+
+/// Show the power of 10 of a number with superscript digits: "1.5e-6" gives "1.5×10⁻⁶".
+/// Use this text only for display: it is not a valid input.
+pub fn pretty(s: &str) -> String {
+    let Some((m, e)) = s.split_once('e') else {
+        return s.to_string();
+    };
+    if e.parse::<i32>().is_err() {
+        return s.to_string();
+    }
+    let sup: String = e
+        .chars()
+        .map(|c| match c {
+            '-' => '⁻',
+            '+' => '⁺',
+            d => ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹']
+                [d.to_digit(10).unwrap_or(0) as usize],
+        })
+        .collect();
+    format!("{m}×10{sup}")
+}
+
 fn trim_zeros(s: &str) -> &str {
     if s.contains('.') {
         s.trim_end_matches('0').trim_end_matches('.')
@@ -443,5 +541,13 @@ mod tests {
         assert_eq!(fmt(-0.0), "0");
         assert_eq!(fmt(1.5e15), "1.5e15");
         assert_eq!(fmt(2.5e-9), "2.5e-9");
+        assert_eq!(fmt_in(1234.5, Notation::Scientific), "1.2345e3");
+        assert_eq!(fmt_in(0.000_012_5, Notation::Engineering), "12.5e-6");
+        assert_eq!(fmt_in(999_999_999_999.9, Notation::Engineering), "1e12");
+        assert_eq!(fmt_in(42.0, Notation::Engineering), "42");
+        assert_eq!(pretty("1.5e-6"), "1.5×10⁻⁶");
+        assert_eq!(pretty("12.5e12"), "12.5×10¹²");
+        assert_eq!(pretty("0.25"), "0.25");
+        assert_eq!(eval("12.5e-6", &Ctx::default()).unwrap(), 12.5e-6);
     }
 }

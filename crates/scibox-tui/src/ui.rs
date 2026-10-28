@@ -4,7 +4,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
-use scibox_core::calc::{self, CONSTANTS, fmt};
+use scibox_core::calc::{self, CONSTANTS};
 use scibox_core::formulas::DOMAINS;
 use scibox_core::state::{KEY_COLUMNS, KeyKind, key_kind};
 use scibox_core::units::GROUPS;
@@ -22,11 +22,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let help_text = match app.kind() {
         Kind::Convert => {
             draw_converter(f, app, body);
-            " Ctrl+P go to · ←→ tab · Tab focus · ↑↓ select · Ctrl+Y or click: copy · Enter or right-click: use"
+            " Ctrl+P go to · ←→ tab · Tab focus · ↑↓ select · Ctrl+Y or click: copy · Enter or right-click: use · F3 notation"
         }
         Kind::Formulas => {
             draw_formulas(f, app, body);
-            " Ctrl+P go to · ←→ tab · Tab focus · ↑↓ select · type a value · Enter: solve for it · Ctrl+Y copy"
+            " Ctrl+P go to · ←→ tab · Tab focus · ↑↓ select · type a value · Enter: solve for it · Ctrl+Y copy · F3 notation"
         }
         Kind::Graph => {
             crate::graph::draw(f, app, body);
@@ -34,7 +34,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         Kind::Calc => {
             draw_calc(f, app, body);
-            " Ctrl+P go to · ←→ tab · type an expression · Enter = · Del clear · Ctrl+Y copy · Esc quit"
+            " Ctrl+P go to · ←→ tab · type an expression · Enter = · Del clear · Ctrl+Y copy · Esc quit · F3 notation"
         }
     };
     let status = match &app.status {
@@ -175,7 +175,11 @@ fn draw_converter(f: &mut Frame, app: &mut App, area: Rect) {
     );
 
     // Results: the value in every unit of the category
-    let results = results.unwrap_or_default();
+    let results: Vec<String> = results
+        .unwrap_or_default()
+        .iter()
+        .map(|r| calc::pretty(r))
+        .collect();
     let width = results.iter().map(|s| s.chars().count()).max().unwrap_or(0);
     let items = units.iter().enumerate().map(|(i, u)| {
         let r = results.get(i).map(String::as_str).unwrap_or("");
@@ -250,7 +254,10 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(1);
     let items = fm.vars.iter().enumerate().map(|(i, var)| {
         let (radio, value) = if i == app.form.unknown {
-            let text = solved.as_ref().map(|v| fmt(*v)).unwrap_or("?".into());
+            let text = solved
+                .as_ref()
+                .map(|v| calc::pretty(&app.ctx.fmt(*v)))
+                .unwrap_or("?".into());
             (
                 Span::from("◉ ").green(),
                 Span::from(format!("{text:<16}")).green().bold(),
@@ -317,9 +324,9 @@ fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .flat_map(|(expr, result)| {
             let result = if result.starts_with("Error") {
-                result.as_str().red()
+                Span::from(result.as_str()).red()
             } else {
-                result.as_str().bold()
+                Span::from(calc::pretty(result)).bold()
             };
             [
                 Line::from(expr.as_str()).dark_gray(),

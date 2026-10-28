@@ -380,7 +380,11 @@ impl App {
                     self.focus == 2,
                     true,
                     |ui| {
-                        let results = results.unwrap_or_default();
+                        let results: Vec<String> = results
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|r| calc::pretty(r))
+                            .collect();
                         let width = results.iter().map(|r| r.chars().count()).max().unwrap_or(0);
                         ScrollArea::vertical().show(ui, |ui| {
                             for (i, (u, r)) in cat.units.iter().zip(&results).enumerate() {
@@ -461,7 +465,7 @@ impl App {
                 });
                 let solved = self.form.solve(fm, &self.ctx);
                 if let Ok(v) = &solved {
-                    self.form.text[self.form.unknown] = calc::fmt(*v);
+                    self.form.text[self.form.unknown] = self.ctx.fmt(*v);
                 }
                 boxed(
                     ui,
@@ -526,10 +530,10 @@ impl App {
                                 let text = format!(
                                     "Copy {} = {}",
                                     fm.vars[self.form.unknown].symbol,
-                                    calc::fmt(v)
+                                    calc::pretty(&self.ctx.fmt(v))
                                 );
                                 if ui.button(text).clicked() {
-                                    self.copy(ui, calc::fmt(v));
+                                    self.copy(ui, self.ctx.fmt(v));
                                 }
                             }
                             Err(e) => {
@@ -621,8 +625,9 @@ impl App {
                                     Color32::WHITE
                                 };
                                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                                    let text =
-                                        RichText::new(format!("= {result}")).color(color).strong();
+                                    let text = RichText::new(format!("= {}", calc::pretty(result)))
+                                        .color(color)
+                                        .strong();
                                     if ui.selectable_label(false, text).clicked() {
                                         copy = Some(result.clone());
                                     }
@@ -709,6 +714,13 @@ impl eframe::App for App {
         }) {
             self.palette = Some((String::new(), 0));
         }
+        if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
+            self.ctx.notation = self.ctx.notation.next();
+            self.status = Some((
+                format!("Notation: {}", self.ctx.notation.name()),
+                ui.input(|i| i.time),
+            ));
+        }
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
             self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
         }
@@ -733,7 +745,7 @@ impl eframe::App for App {
                 _ => {
                     ui.label(
                         RichText::new(
-                            " ←→ tab · Tab focus · ↑↓ select · Enter use/solve/= · Del clear · Ctrl+Y copy · Ctrl+P go to · F2 3D · Esc quit",
+                            " ←→ tab · Tab focus · ↑↓ select · Enter use/solve/= · Del clear · Ctrl+Y copy · Ctrl+P go to · F2 3D · F3 notation · Esc quit",
                         )
                         .color(GRAY),
                     );

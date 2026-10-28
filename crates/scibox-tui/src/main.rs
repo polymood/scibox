@@ -223,7 +223,7 @@ impl App {
     fn copy_current(&mut self) {
         let text = match self.kind() {
             Kind::Convert => self.results().ok().map(|r| r[self.sel(2)].clone()),
-            Kind::Formulas => self.solve().ok().map(calc::fmt),
+            Kind::Formulas => self.solve().ok().map(|v| self.ctx.fmt(v)),
             Kind::Calc => self.calc.history.last().map(|h| h.1.clone()),
             Kind::Graph => None,
         };
@@ -268,6 +268,10 @@ impl App {
             KeyCode::Left => self.set_tab((self.tab + TABS - 1) % TABS),
             KeyCode::Right => self.set_tab((self.tab + 1) % TABS),
             KeyCode::F(2) => self.next_style(),
+            KeyCode::F(3) => {
+                self.ctx.notation = self.ctx.notation.next();
+                self.status = Some(format!("Notation: {}", self.ctx.notation.name()));
+            }
             KeyCode::Tab => self.focus = (self.focus + 1) % self.pane_count(),
             KeyCode::BackTab => {
                 self.focus = (self.focus + self.pane_count() - 1) % self.pane_count()

@@ -34,14 +34,15 @@ scibox has two applications with the same functions:
 
 ## Features
 
-- **Unit converter**: more than 30 categories in 4 tabs (Common, Engineering, Science, Computing).
+- **Unit converter**: 400 units in 49 categories, in 4 tabs (Common, Engineering, Science, Computing).
   One input value shows the result in all the units of the category.
 - **Logarithmic units**: dBm, dBW, dBV, dBu, dBµV, dB SPL, and the power and amplitude ratios (dB, B, Np).
 - **Number base**: decimal, hexadecimal, binary, and octal (128-bit integers).
-- **Formulas**: more than 130 formulas in 7 domains (Decibels & RF, Electronics, Mechanics, Structures, Thermal, Fluids, Physics).
+- **Formulas**: more than 240 formulas in 9 domains (Decibels & RF, Electronics, Mechanics, Structures, Thermal, Fluids, Physics, Chemistry, Optics).
   You can solve each formula for any variable.
 - **Graph**: plot functions, equations in x and y, polar curves, parametric curves, and 3D surfaces.
 - **Calculator**: a scientific calculator with a keypad that you can click.
+- **Powers of 10**: the results show as `1.26×10⁻⁶`. Press F3 to select the notation: auto, scientific, or engineering (the exponent is a multiple of 3, as the SI prefixes).
 - **Go to**: press Ctrl+P and type a part of a name to go to a category, a unit, or a formula.
 - **Copy**: copy a result to the clipboard with a mouse click (or Ctrl+Y in the TUI).
 - All the input fields accept expressions, for example `3*12.5`, `2pi`, or `4.7e3`.
@@ -93,7 +94,8 @@ In scibox-gui, use the mouse as in a usual desktop application. The keys in this
 | Up, Down | Select an item in the pane that has the focus |
 | Backspace | Delete the last character |
 | Delete | Clear the input |
-| Ctrl+Y | Copy the current result |
+| Ctrl+Y | Copy the current result (as `1.26e-6`, a valid input for other programs) |
+| F3 | Select the notation of the results: auto, scientific, or engineering |
 | Esc, Ctrl+C | Quit (Esc closes the "Go to" window first) |
 
 You can also click the tabs, the lists, and the `⌕ Ctrl+P` button.

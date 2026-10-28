@@ -83,7 +83,7 @@ pub fn convert_all(
     Ok(cat
         .units
         .iter()
-        .map(|to| calc::fmt(units::convert(v, from, to)))
+        .map(|to| ctx.fmt(units::convert(v, from, to)))
         .collect())
 }
 
@@ -123,7 +123,7 @@ impl FormulaInputs {
     /// Solve for variable `i`. The old unknown keeps its last result as text.
     pub fn set_unknown(&mut self, fm: &Formula, i: usize, ctx: &Ctx) {
         if let Ok(v) = self.solve(fm, ctx) {
-            self.text[self.unknown] = calc::fmt(v);
+            self.text[self.unknown] = ctx.fmt(v);
         }
         self.unknown = i;
     }
@@ -211,7 +211,7 @@ impl Calculator {
         }
         match calc::eval(&self.input, ctx) {
             Ok(v) => {
-                let result = calc::fmt(v);
+                let result = ctx.fmt(v);
                 self.history
                     .push((std::mem::take(&mut self.input), result.clone()));
                 ctx.ans = v;

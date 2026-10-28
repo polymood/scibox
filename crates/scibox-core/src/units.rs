@@ -162,6 +162,12 @@ pub static GROUPS: &[Group] = &[
             FUEL,
             POWER_RATIO,
             AMPLITUDE_RATIO,
+            KINEMATIC_VISCOSITY,
+            THERMAL_CONDUCTIVITY,
+            HEAT_TRANSFER,
+            SPECIFIC_HEAT,
+            MASS_FLOW,
+            IRRADIANCE,
         ],
     },
     Group {
@@ -177,6 +183,15 @@ pub static GROUPS: &[Group] = &[
             RADIOACTIVITY,
             ABSORBED_DOSE,
             EQUIVALENT_DOSE,
+            INDUCTANCE,
+            CONDUCTANCE,
+            MAGNETIC_FLUX,
+            ELECTRIC_FIELD,
+            RESISTIVITY,
+            LUMINANCE,
+            LUMINOUS_FLUX,
+            AMOUNT,
+            CONCENTRATION,
         ],
     },
     Group {
@@ -205,6 +220,15 @@ const LENGTH: Category = Category {
         u("Astronomical unit", "au", 149_597_870_700.0),
         u("Light-year", "ly", 9_460_730_472_580_800.0),
         u("Parsec", "pc", 3.085_677_581_491_367e16),
+        u("Picometer", "pm", 1e-12),
+        u("Femtometer", "fm", 1e-15),
+        u("Mil (thou)", "mil", 2.54e-5),
+        u("Typographic point", "pt", 0.0254 / 72.0),
+        u("Hand", "hh", 0.1016),
+        u("Fathom", "ftm", 1.8288),
+        u("Chain", "ch", 20.1168),
+        u("Furlong", "fur", 201.168),
+        u("Light-second", "ls", 299_792_458.0),
     ],
 };
 
@@ -222,6 +246,9 @@ const AREA: Category = Category {
         u("Square yard", "yd²", 0.836_127_36),
         u("Acre", "ac", 4_046.856_422_4),
         u("Square mile", "mi²", 2_589_988.110_336),
+        u("Square micrometer", "µm²", 1e-12),
+        u("Circular mil", "cmil", PI / 4.0 * 2.54e-5 * 2.54e-5),
+        u("Barn", "b", 1e-28),
     ],
 };
 
@@ -244,6 +271,13 @@ const VOLUME: Category = Category {
         u("Imperial gallon", "imp gal", 4.546_09e-3),
         u("Imperial pint", "imp pt", 5.682_612_5e-4),
         u("Oil barrel", "bbl", 0.158_987_294_928),
+        u("Deciliter", "dL", 1e-4),
+        u("Centiliter", "cL", 1e-5),
+        u("Microliter", "µL", 1e-9),
+        u("Cubic yard", "yd³", 0.764_554_857_984),
+        u("Acre-foot", "ac·ft", 1_233.481_837_547_52),
+        u("US gill", "gi", 4.0 * 2.957_352_956_25e-5),
+        u("Imperial fluid ounce", "imp fl oz", 2.841_306_25e-5),
     ],
 };
 
@@ -263,6 +297,13 @@ const MASS: Category = Category {
         u("Carat", "ct", 2e-4),
         u("Troy ounce", "oz t", 0.031_103_476_8),
         u("Atomic mass unit", "Da", 1.660_539_066_60e-27),
+        u("Grain", "gr", 6.479_891e-5),
+        u("Dram", "dr", 0.453_592_37 / 256.0),
+        u("Pennyweight", "dwt", 1.555_173_84e-3),
+        u("Slug", "slug", 4.448_221_615_260_5 / 0.3048),
+        u("Quintal", "q", 100.0),
+        u("Earth mass", "M⊕", 5.972_2e24),
+        u("Solar mass", "M☉", 1.988_47e30),
     ],
 };
 
@@ -279,6 +320,11 @@ const TIME: Category = Category {
         u("Week", "wk", 604_800.0),
         u("Month (average)", "mo", 2_629_800.0),
         u("Year (Julian)", "yr", 31_557_600.0),
+        u("Picosecond", "ps", 1e-12),
+        u("Fortnight", "fn", 1_209_600.0),
+        u("Sidereal day", "sd", 86_164.090_5),
+        u("Decade", "dec", 315_576_000.0),
+        u("Century", "cent", 3_155_760_000.0),
     ],
 };
 
@@ -291,6 +337,10 @@ const SPEED: Category = Category {
         u("Knot", "kn", 1852.0 / 3600.0),
         u("Foot per second", "ft/s", 0.3048),
         u("Speed of light", "c", 299_792_458.0),
+        u("Centimeter per second", "cm/s", 0.01),
+        u("Kilometer per second", "km/s", 1e3),
+        u("Foot per minute", "ft/min", 0.3048 / 60.0),
+        u("Mach (sea level, 15 °C)", "Ma", 340.294),
     ],
 };
 
@@ -301,6 +351,8 @@ const TEMPERATURE: Category = Category {
         affine("Celsius", "°C", 1.0, 273.15),
         affine("Fahrenheit", "°F", 5.0 / 9.0, 459.67 * 5.0 / 9.0),
         affine("Rankine", "°R", 5.0 / 9.0, 0.0),
+        affine("Réaumur", "°Ré", 1.25, 273.15),
+        affine("Delisle", "°De", -2.0 / 3.0, 373.15),
     ],
 };
 
@@ -321,6 +373,12 @@ const PRESSURE: Category = Category {
         u("Millimeter of mercury", "mmHg", 133.322_387_415),
         u("Inch of mercury", "inHg", 3386.389),
         log("Sound pressure level", "dB SPL", 20e-6, 20.0),
+        u("Gigapascal", "GPa", 1e9),
+        u("Kilopound per square inch", "ksi", 6_894_757.293_168),
+        u("Technical atmosphere", "at", 98_066.5),
+        u("Centimeter of water", "cmH₂O", 98.066_5),
+        u("Inch of water", "inH₂O", 249.088_908_333),
+        u("Dyne per square centimeter", "dyn/cm²", 0.1),
     ],
 };
 
@@ -338,6 +396,16 @@ const ENERGY: Category = Category {
         u("Electronvolt", "eV", 1.602_176_634e-19),
         u("Erg", "erg", 1e-7),
         u("Foot-pound", "ft·lbf", 1.355_817_948_331_400_4),
+        u("Gigajoule", "GJ", 1e9),
+        u("Megawatt hour", "MWh", 3.6e9),
+        u("Gigawatt hour", "GWh", 3.6e12),
+        u("Kiloelectronvolt", "keV", 1.602_176_634e-16),
+        u("Megaelectronvolt", "MeV", 1.602_176_634e-13),
+        u("Gigaelectronvolt", "GeV", 1.602_176_634e-10),
+        u("Hartree", "Eh", 4.359_744_722_207_1e-18),
+        u("Therm (US)", "thm", 105_480_400.0),
+        u("Tonne of TNT", "tTNT", 4.184e9),
+        u("Tonne of oil equivalent", "toe", 4.1868e10),
     ],
 };
 
@@ -353,6 +421,12 @@ const POWER: Category = Category {
         u("BTU per hour", "BTU/h", 0.293_071_070_17),
         log("Decibel-milliwatt", "dBm", 1e-3, 10.0),
         log("Decibel-watt", "dBW", 1.0, 10.0),
+        u("Gigawatt", "GW", 1e9),
+        u("Terawatt", "TW", 1e12),
+        u("Ton of refrigeration", "TR", 12_000.0 * 0.293_071_070_17),
+        u("Kilocalorie per hour", "kcal/h", 4184.0 / 3600.0),
+        u("Calorie per second", "cal/s", 4.184),
+        u("Erg per second", "erg/s", 1e-7),
     ],
 };
 
@@ -364,6 +438,11 @@ const FORCE: Category = Category {
         u("Dyne", "dyn", 1e-5),
         u("Kilogram-force", "kgf", 9.806_65),
         u("Pound-force", "lbf", 4.448_221_615_260_5),
+        u("Millinewton", "mN", 1e-3),
+        u("Meganewton", "MN", 1e6),
+        u("Ounce-force", "ozf", 4.448_221_615_260_5 / 16.0),
+        u("Poundal", "pdl", 0.138_254_954_376),
+        u("Kip", "kip", 4_448.221_615_260_5),
     ],
 };
 
@@ -375,6 +454,12 @@ const TORQUE: Category = Category {
         u("Kilogram-force meter", "kgf·m", 9.806_65),
         u("Pound-force foot", "lbf·ft", 1.355_817_948_331_400_4),
         u("Pound-force inch", "lbf·in", 0.112_984_829_027_616_7),
+        u("Newton centimeter", "N·cm", 0.01),
+        u(
+            "Ounce-force inch",
+            "ozf·in",
+            4.448_221_615_260_5 / 16.0 * 0.0254,
+        ),
     ],
 };
 
@@ -385,6 +470,8 @@ const ACCELERATION: Category = Category {
         u("Standard gravity", "g₀", 9.806_65),
         u("Foot per second squared", "ft/s²", 0.3048),
         u("Gal", "Gal", 0.01),
+        u("Kilometer per hour per second", "km/h/s", 1.0 / 3.6),
+        u("Inch per second squared", "in/s²", 0.0254),
     ],
 };
 
@@ -398,6 +485,9 @@ const ANGLE: Category = Category {
         u("Arcsecond", "″", PI / 648_000.0),
         u("Gradian", "grad", PI / 200.0),
         u("Turn", "tr", 2.0 * PI),
+        u("Microradian", "µrad", 1e-6),
+        u("NATO mil", "mil", 2.0 * PI / 6400.0),
+        u("Quadrant", "quad", PI / 2.0),
     ],
 };
 
@@ -410,6 +500,9 @@ const FREQUENCY: Category = Category {
         u("Gigahertz", "GHz", 1e9),
         u("Revolution per minute", "rpm", 1.0 / 60.0),
         u("Radian per second", "rad/s", 1.0 / (2.0 * PI)),
+        u("Millihertz", "mHz", 1e-3),
+        u("Terahertz", "THz", 1e12),
+        u("Revolution per second", "rps", 1.0),
     ],
 };
 
@@ -421,6 +514,18 @@ const DENSITY: Category = Category {
         u("Gram per liter", "g/L", 1.0),
         u("Pound per cubic foot", "lb/ft³", 16.018_463_373_96),
         u("Pound per US gallon", "lb/gal", 119.826_427_316),
+        u("Kilogram per liter", "kg/L", 1e3),
+        u("Milligram per liter", "mg/L", 1e-3),
+        u(
+            "Ounce per cubic inch",
+            "oz/in³",
+            0.028_349_523_125 / 1.638_706_4e-5,
+        ),
+        u(
+            "Slug per cubic foot",
+            "slug/ft³",
+            4.448_221_615_260_5 / 0.3048 / 0.028_316_846_592,
+        ),
     ],
 };
 
@@ -433,16 +538,24 @@ const FLOW: Category = Category {
         u("Liter per minute", "L/min", 1e-3 / 60.0),
         u("US gallon per minute", "gpm", 3.785_411_784e-3 / 60.0),
         u("Cubic foot per minute", "cfm", 0.028_316_846_592 / 60.0),
+        u("Liter per hour", "L/h", 1e-3 / 3600.0),
+        u("Milliliter per minute", "mL/min", 1e-6 / 60.0),
+        u("Cubic meter per day", "m³/d", 1.0 / 86_400.0),
+        u("Cubic foot per second", "cfs", 0.028_316_846_592),
+        u("Imperial gallon per minute", "imp gpm", 4.546_09e-3 / 60.0),
+        u("Oil barrel per day", "bbl/d", 0.158_987_294_928 / 86_400.0),
     ],
 };
 
 const VISCOSITY: Category = Category {
-    name: "Viscosity",
+    name: "Dynamic viscosity",
     units: &[
         u("Pascal second", "Pa·s", 1.0),
         u("Millipascal second", "mPa·s", 1e-3),
         u("Poise", "P", 0.1),
         u("Centipoise", "cP", 1e-3),
+        u("Pound per foot second", "lb/(ft·s)", 0.453_592_37 / 0.3048),
+        u("Reyn", "reyn", 6_894.757_293_168),
     ],
 };
 
@@ -477,6 +590,180 @@ const AMPLITUDE_RATIO: Category = Category {
     ],
 };
 
+const KINEMATIC_VISCOSITY: Category = Category {
+    name: "Kinematic viscosity",
+    units: &[
+        u("Square meter per second", "m²/s", 1.0),
+        u("Square centimeter per second", "cm²/s", 1e-4),
+        u("Square millimeter per second", "mm²/s", 1e-6),
+        u("Stokes", "St", 1e-4),
+        u("Centistokes", "cSt", 1e-6),
+        u("Square foot per second", "ft²/s", 0.092_903_04),
+    ],
+};
+
+const THERMAL_CONDUCTIVITY: Category = Category {
+    name: "Thermal conductivity",
+    units: &[
+        u("Watt per meter kelvin", "W/(m·K)", 1.0),
+        u("Watt per centimeter kelvin", "W/(cm·K)", 100.0),
+        u("BTU per hour foot °F", "BTU/(h·ft·°F)", 1.730_734_666),
+        u("Calorie per second cm °C", "cal/(s·cm·°C)", 418.4),
+        u(
+            "Kilocalorie per hour m °C",
+            "kcal/(h·m·°C)",
+            4184.0 / 3600.0,
+        ),
+    ],
+};
+
+const HEAT_TRANSFER: Category = Category {
+    name: "Heat transfer coefficient",
+    units: &[
+        u("Watt per square meter kelvin", "W/(m²·K)", 1.0),
+        u("Kilowatt per square meter kelvin", "kW/(m²·K)", 1e3),
+        u("BTU per hour sq foot °F", "BTU/(h·ft²·°F)", 5.678_263_341),
+        u(
+            "Kilocalorie per hour m² °C",
+            "kcal/(h·m²·°C)",
+            4184.0 / 3600.0,
+        ),
+    ],
+};
+
+const SPECIFIC_HEAT: Category = Category {
+    name: "Specific heat",
+    units: &[
+        u("Joule per kilogram kelvin", "J/(kg·K)", 1.0),
+        u("Kilojoule per kilogram kelvin", "kJ/(kg·K)", 1e3),
+        u("Joule per gram kelvin", "J/(g·K)", 1e3),
+        u("Calorie per gram °C", "cal/(g·°C)", 4184.0),
+        u("BTU per pound °F", "BTU/(lb·°F)", 4186.8),
+    ],
+};
+
+const MASS_FLOW: Category = Category {
+    name: "Mass flow",
+    units: &[
+        u("Kilogram per second", "kg/s", 1.0),
+        u("Gram per second", "g/s", 1e-3),
+        u("Kilogram per hour", "kg/h", 1.0 / 3600.0),
+        u("Tonne per hour", "t/h", 1.0 / 3.6),
+        u("Pound per second", "lb/s", 0.453_592_37),
+        u("Pound per hour", "lb/h", 0.453_592_37 / 3600.0),
+    ],
+};
+
+const IRRADIANCE: Category = Category {
+    name: "Irradiance",
+    units: &[
+        u("Watt per square meter", "W/m²", 1.0),
+        u("Kilowatt per square meter", "kW/m²", 1e3),
+        u("Milliwatt per square centimeter", "mW/cm²", 10.0),
+        u("Watt per square centimeter", "W/cm²", 1e4),
+        u(
+            "BTU per hour square foot",
+            "BTU/(h·ft²)",
+            0.293_071_070_17 / 0.092_903_04,
+        ),
+    ],
+};
+
+const INDUCTANCE: Category = Category {
+    name: "Inductance",
+    units: &[
+        u("Henry", "H", 1.0),
+        u("Millihenry", "mH", 1e-3),
+        u("Microhenry", "µH", 1e-6),
+        u("Nanohenry", "nH", 1e-9),
+    ],
+};
+
+const CONDUCTANCE: Category = Category {
+    name: "Conductance",
+    units: &[
+        u("Siemens", "S", 1.0),
+        u("Millisiemens", "mS", 1e-3),
+        u("Microsiemens", "µS", 1e-6),
+        u("Mho", "℧", 1.0),
+    ],
+};
+
+const MAGNETIC_FLUX: Category = Category {
+    name: "Magnetic flux",
+    units: &[
+        u("Weber", "Wb", 1.0),
+        u("Milliweber", "mWb", 1e-3),
+        u("Microweber", "µWb", 1e-6),
+        u("Maxwell", "Mx", 1e-8),
+    ],
+};
+
+const ELECTRIC_FIELD: Category = Category {
+    name: "Electric field",
+    units: &[
+        u("Volt per meter", "V/m", 1.0),
+        u("Volt per centimeter", "V/cm", 100.0),
+        u("Volt per millimeter", "V/mm", 1e3),
+        u("Kilovolt per meter", "kV/m", 1e3),
+        u("Kilovolt per centimeter", "kV/cm", 1e5),
+        u("Megavolt per meter", "MV/m", 1e6),
+    ],
+};
+
+const RESISTIVITY: Category = Category {
+    name: "Resistivity",
+    units: &[
+        u("Ohm meter", "Ω·m", 1.0),
+        u("Ohm centimeter", "Ω·cm", 0.01),
+        u("Microohm centimeter", "µΩ·cm", 1e-8),
+        u("Nanoohm meter", "nΩ·m", 1e-9),
+        u("Ohm square millimeter per meter", "Ω·mm²/m", 1e-6),
+    ],
+};
+
+const LUMINANCE: Category = Category {
+    name: "Luminance",
+    units: &[
+        u("Candela per square meter (nit)", "cd/m²", 1.0),
+        u("Candela per square centimeter", "cd/cm²", 1e4),
+        u("Foot-lambert", "fL", 3.426_259_099_635_39),
+        u("Lambert", "L", 1e4 / PI),
+    ],
+};
+
+const LUMINOUS_FLUX: Category = Category {
+    name: "Luminous flux",
+    units: &[
+        u("Lumen", "lm", 1.0),
+        u("Millilumen", "mlm", 1e-3),
+        u("Kilolumen", "klm", 1e3),
+    ],
+};
+
+const AMOUNT: Category = Category {
+    name: "Amount of substance",
+    units: &[
+        u("Mole", "mol", 1.0),
+        u("Millimole", "mmol", 1e-3),
+        u("Micromole", "µmol", 1e-6),
+        u("Kilomole", "kmol", 1e3),
+        u("Pound-mole", "lb-mol", 453.592_37),
+        u("Number of particles", "N", 1.0 / 6.022_140_76e23),
+    ],
+};
+
+const CONCENTRATION: Category = Category {
+    name: "Molar concentration",
+    units: &[
+        u("Mole per cubic meter", "mol/m³", 1.0),
+        u("Mole per liter (molar)", "M", 1e3),
+        u("Millimole per liter", "mM", 1.0),
+        u("Micromole per liter", "µM", 1e-3),
+        u("Nanomole per liter", "nM", 1e-6),
+    ],
+};
+
 // ---- Science ----
 
 const CURRENT: Category = Category {
@@ -486,6 +773,7 @@ const CURRENT: Category = Category {
         u("Milliampere", "mA", 1e-3),
         u("Microampere", "µA", 1e-6),
         u("Kiloampere", "kA", 1e3),
+        u("Nanoampere", "nA", 1e-9),
     ],
 };
 
@@ -515,6 +803,7 @@ const RESISTANCE: Category = Category {
         u("Milliohm", "mΩ", 1e-3),
         u("Kiloohm", "kΩ", 1e3),
         u("Megaohm", "MΩ", 1e6),
+        u("Gigaohm", "GΩ", 1e9),
     ],
 };
 
@@ -526,6 +815,7 @@ const CAPACITANCE: Category = Category {
         u("Microfarad", "µF", 1e-6),
         u("Nanofarad", "nF", 1e-9),
         u("Picofarad", "pF", 1e-12),
+        u("Femtofarad", "fF", 1e-15),
     ],
 };
 
@@ -546,6 +836,8 @@ const MAGNETIC: Category = Category {
         u("Millitesla", "mT", 1e-3),
         u("Microtesla", "µT", 1e-6),
         u("Gauss", "G", 1e-4),
+        u("Nanotesla", "nT", 1e-9),
+        u("Gamma", "γ", 1e-9),
     ],
 };
 
@@ -613,6 +905,12 @@ const DATA: Category = Category {
         u("Mebibyte", "MiB", 1_048_576.0),
         u("Gibibyte", "GiB", 1_073_741_824.0),
         u("Tebibyte", "TiB", 1_099_511_627_776.0),
+        u("Nibble", "nibble", 0.5),
+        u("Kilobit", "kbit", 125.0),
+        u("Megabit", "Mbit", 1.25e5),
+        u("Gigabit", "Gbit", 1.25e8),
+        u("Petabyte", "PB", 1e15),
+        u("Pebibyte", "PiB", 1_125_899_906_842_624.0),
     ],
 };
 
@@ -626,6 +924,10 @@ const DATA_RATE: Category = Category {
         u("Byte per second", "B/s", 8.0),
         u("Megabyte per second", "MB/s", 8e6),
         u("Mebibyte per second", "MiB/s", 8.0 * 1_048_576.0),
+        u("Terabit per second", "Tbit/s", 1e12),
+        u("Kilobyte per second", "kB/s", 8e3),
+        u("Gigabyte per second", "GB/s", 8e9),
+        u("Kibibyte per second", "KiB/s", 8.0 * 1024.0),
     ],
 };
 
