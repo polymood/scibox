@@ -18,12 +18,6 @@ const CURVES: [Color; 5] = [
     Color::Red,
 ];
 
-pub const LOGO: [&str; 3] = [
-    "┌─┐┌─┐┬┌┐ ┌─┐╲ ╱",
-    "└─┐│  │├┴┐│ │ ╳ ",
-    "└─┘└─┘┴└─┘└─┘╱ ╲",
-];
-
 pub fn draw(f: &mut Frame, app: &mut App) {
     let [top, body, help] = Layout::vertical([
         Constraint::Length(1),
@@ -438,10 +432,10 @@ fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
         input_area,
     );
 
-    // History: show the most recent lines at the bottom. Show the logo if the history is empty.
+    // History: show the most recent lines at the bottom.
     let visible = history_area.height.saturating_sub(2) as usize / 2;
     let skip = app.history.len().saturating_sub(visible);
-    let mut lines: Vec<Line> = app.history[skip..]
+    let lines: Vec<Line> = app.history[skip..]
         .iter()
         .flat_map(|(expr, result)| {
             let result = if result.starts_with("Error") {
@@ -455,13 +449,6 @@ fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
             ]
         })
         .collect();
-    if lines.is_empty() {
-        lines = LOGO
-            .iter()
-            .map(|l| Line::from(*l).fg(ACCENT).centered())
-            .collect();
-        lines.insert(0, Line::default());
-    }
     f.render_widget(
         Paragraph::new(lines).block(block(" History ", false)),
         history_area,
