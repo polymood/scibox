@@ -47,8 +47,15 @@ pub struct App {
     palette: Option<(String, usize)>,
     /// A message for the status bar, and the time when it appeared.
     status: Option<(String, f64)>,
-    /// Put the keyboard focus on the main input of the tab (after a tab change).
-    focus_input: bool,
+    /// The pane (or the graph field) that the keyboard controls, as in the TUI.
+    pub focus: usize,
+    /// The converter result and the formula variable that the keyboard selects.
+    res: usize,
+    var: usize,
+    /// Select all the text of the active field at the next frame: the next key replaces it.
+    pub fresh: bool,
+    /// Scroll the lists to the selected items at the next frame.
+    scroll: bool,
 }
 
 impl App {
@@ -80,7 +87,11 @@ impl App {
             ]),
             palette: None,
             status: None,
-            focus_input: true,
+            focus: 0,
+            res: 0,
+            var: 1,
+            fresh: false,
+            scroll: false,
         };
         // Options for the screenshots of the README: go to an entry, set the graph, type in the calculator.
         if let Ok(query) = std::env::var("SCIBOX_GOTO")
@@ -118,7 +129,8 @@ impl App {
             self.tab = tab;
             self.cat = 0;
             self.from = 0;
-            self.focus_input = true;
+            self.res = 0;
+            self.focus = 0;
         }
     }
 
@@ -126,6 +138,7 @@ impl App {
         self.dom = dom;
         self.formula = formula;
         self.form = FormulaInputs::new(self.fm());
+        self.var = 1.min(self.fm().vars.len() - 1);
     }
 
     /// Go to a search entry.
@@ -142,7 +155,121 @@ impl App {
                 self.select_formula(d, f);
             }
         }
-        self.focus_input = true;
+        if self.tab == FORMULAS_TAB {
+            self.focus = 2;
+            self.fresh = true;
+        }
+    }
+
+    /// The keys of the TUI: ←→ tab, Tab focus, ↑↓ select, Enter, Delete, Ctrl+Y, Esc.
+    fn keyboard(&mut self, ui: &mut Ui) {
+        let none = Modifiers::NONE;
+        // Shift+Tab first: a test for Tab without modifiers also accepts Shift+Tab.
+        let (back, tab, left, right, up, down, enter, delete, copy, esc) = ui.input_mut(|i| {
+            (
+                i.consume_key(Modifiers::SHIFT, Key::Tab),
+                i.consume_key(none, Key::Tab),
+                i.consume_key(none, Key::ArrowLeft),
+                i.consume_key(none, Key::ArrowRight),
+                i.consume_key(none, Key::ArrowUp),
+                i.consume_key(none, Key::ArrowDown),
+                i.consume_key(none, Key::Enter),
+                i.consume_key(none, Key::Delete),
+                i.consume_key(Modifiers::COMMAND, Key::Y),
+                i.consume_key(none, Key::Escape),
+            )
+        });
+        if esc {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        let tabs = GROUPS.len() + 3;
+        if left {
+            self.set_tab((self.tab + tabs - 1) % tabs);
+        }
+        if right {
+            self.set_tab((self.tab + 1) % tabs);
+        }
+        let panes = match self.tab {
+            GRAPH_TAB => 9,
+            CALC_TAB => 1,
+            _ => 3,
+        };
+        if tab || back {
+            self.focus = (self.focus + if tab { 1 } else { panes - 1 }) % panes;
+            self.fresh = true;
+        }
+        if up || down {
+            self.move_sel(if up { -1 } else { 1 });
+        }
+        if enter {
+            match self.tab {
+                FORMULAS_TAB => self.form.set_unknown(self.fm(), self.var, &self.ctx),
+                CALC_TAB => self.calc.evaluate(&mut self.ctx),
+                GRAPH_TAB => {}
+                _ if self.focus == 2 => {
+                    if let Ok(r) =
+                        state::convert_all(self.category(), self.from, &self.input, &self.ctx)
+                    {
+                        self.input = r[self.res].clone();
+                        self.from = self.res;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if delete {
+            match self.tab {
+                FORMULAS_TAB => {
+                    self.form.edit(self.fm(), self.var, &self.ctx);
+                    self.form.text[self.var].clear();
+                }
+                GRAPH_TAB => self.graph[self.focus].clear(),
+                CALC_TAB => self.calc.input.clear(),
+                _ => self.input.clear(),
+            }
+        }
+        if copy {
+            let text = match self.tab {
+                FORMULAS_TAB => self.form.solve(self.fm(), &self.ctx).ok().map(calc::fmt),
+                CALC_TAB => self.calc.history.last().map(|h| h.1.clone()),
+                GRAPH_TAB => None,
+                _ => state::convert_all(self.category(), self.from, &self.input, &self.ctx)
+                    .ok()
+                    .map(|r| r[self.res].clone()),
+            };
+            if let Some(t) = text {
+                self.copy(ui, t);
+            }
+        }
+    }
+
+    /// Move the selection of the focused pane by `d` rows (graph: go to the previous or the next field).
+    fn move_sel(&mut self, d: isize) {
+        let step = |v: usize, len: usize| v.saturating_add_signed(d).min(len.saturating_sub(1));
+        match (self.tab, self.focus) {
+            (GRAPH_TAB, f) => {
+                self.focus = step(f, 9);
+                self.fresh = true;
+            }
+            (CALC_TAB, _) => {}
+            (FORMULAS_TAB, 0) => self.select_formula(step(self.dom, DOMAINS.len()), 0),
+            (FORMULAS_TAB, 1) => self.select_formula(
+                self.dom,
+                step(self.formula, DOMAINS[self.dom].formulas.len()),
+            ),
+            (FORMULAS_TAB, _) => {
+                self.var = step(self.var, self.fm().vars.len());
+                self.fresh = true;
+            }
+            (_, 0) => {
+                self.cat = step(self.cat, GROUPS[self.tab].categories.len());
+                self.from = 0;
+                self.res = 0;
+            }
+            (_, 1) => self.from = step(self.from, self.category().units.len()),
+            _ => self.res = step(self.res, self.category().units.len()),
+        }
+        self.scroll = true;
     }
 
     fn copy(&mut self, ui: &Ui, text: String) {
@@ -193,7 +320,7 @@ impl App {
                                 .frame(egui::Frame::new())
                                 .desired_width(width),
                         );
-                        if std::mem::take(&mut self.focus_input) {
+                        if self.palette.is_none() {
                             r.request_focus();
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -213,11 +340,14 @@ impl App {
             .show_separator_line(false)
             .frame(look::panel())
             .show(ui, |ui| {
-                boxed(ui, "Category", false, true, |ui| {
+                boxed(ui, "Category", self.focus == 0, true, |ui| {
                     for (i, c) in GROUPS[self.tab].categories.iter().enumerate() {
-                        if item(ui, self.cat == i, c.name).clicked() {
-                            self.cat = i;
-                            self.from = 0;
+                        let r = item(ui, self.cat == i, c.name);
+                        if r.clicked() {
+                            (self.cat, self.from, self.res, self.focus) = (i, 0, 0, 0);
+                        }
+                        if self.scroll && self.cat == i {
+                            r.scroll_to_me(None);
                         }
                     }
                 });
@@ -227,11 +357,15 @@ impl App {
             .show_separator_line(false)
             .frame(look::panel())
             .show(ui, |ui| {
-                boxed(ui, "From", true, true, |ui| {
+                boxed(ui, "From", self.focus == 1, true, |ui| {
                     ScrollArea::vertical().show(ui, |ui| {
                         for (i, u) in cat.units.iter().enumerate() {
-                            if item(ui, self.from == i, u.name).clicked() {
-                                self.from = i;
+                            let r = item(ui, self.from == i, u.name);
+                            if r.clicked() {
+                                (self.from, self.focus) = (i, 1);
+                            }
+                            if self.scroll && self.from == i {
+                                r.scroll_to_me(None);
                             }
                         }
                     });
@@ -243,7 +377,7 @@ impl App {
                 boxed(
                     ui,
                     "Result · click: copy · right-click: use",
-                    false,
+                    self.focus == 2,
                     true,
                     |ui| {
                         let results = results.unwrap_or_default();
@@ -254,15 +388,21 @@ impl App {
                                     "{r:>width$} {:<8} {}",
                                     u.symbol, u.name
                                 ));
-                                let resp = ui.selectable_label(
-                                    false,
-                                    if i == self.from {
-                                        text.color(look::YELLOW)
-                                    } else {
-                                        text
-                                    },
-                                );
+                                // The keyboard cursor (black on the accent color), and the "from" unit (yellow).
+                                let selected = self.focus == 2 && i == self.res;
+                                let text = if selected {
+                                    text.color(Color32::BLACK).strong()
+                                } else if i == self.from {
+                                    text.color(look::YELLOW)
+                                } else {
+                                    text
+                                };
+                                let resp = ui.selectable_label(selected, text);
+                                if self.scroll && selected {
+                                    resp.scroll_to_me(None);
+                                }
                                 if resp.clicked() {
+                                    (self.res, self.focus) = (i, 2);
                                     self.copy(ui, r.clone());
                                 }
                                 if resp.secondary_clicked() {
@@ -282,10 +422,11 @@ impl App {
             .show_separator_line(false)
             .frame(look::panel())
             .show(ui, |ui| {
-                boxed(ui, "Domain", false, true, |ui| {
+                boxed(ui, "Domain", self.focus == 0, true, |ui| {
                     for (i, d) in DOMAINS.iter().enumerate() {
                         if item(ui, self.dom == i, d.name).clicked() {
                             self.select_formula(i, 0);
+                            self.focus = 0;
                         }
                     }
                 });
@@ -295,11 +436,16 @@ impl App {
             .show_separator_line(false)
             .frame(look::panel())
             .show(ui, |ui| {
-                boxed(ui, "Formula", false, true, |ui| {
+                boxed(ui, "Formula", self.focus == 1, true, |ui| {
                     ScrollArea::vertical().show(ui, |ui| {
                         for (i, f) in DOMAINS[self.dom].formulas.iter().enumerate() {
-                            if item(ui, self.formula == i, f.name).clicked() {
+                            let r = item(ui, self.formula == i, f.name);
+                            if r.clicked() {
                                 self.select_formula(self.dom, i);
+                                self.focus = 1;
+                            }
+                            if self.scroll && self.formula == i {
+                                r.scroll_to_me(None);
                             }
                         }
                     });
@@ -319,8 +465,8 @@ impl App {
                 }
                 boxed(
                     ui,
-                    "Variables · ◉ = solve for this variable",
-                    true,
+                    "Variables · ◉ = solve for this variable (Enter)",
+                    self.focus == 2,
                     true,
                     |ui| {
                         egui::Grid::new("vars")
@@ -353,6 +499,15 @@ impl App {
                                         TextEdit::singleline(&mut self.form.text[i])
                                             .text_color(color),
                                     );
+                                    if r.gained_focus() && i != self.var {
+                                        (self.var, self.focus) = (i, 2);
+                                    }
+                                    if i == self.var && self.palette.is_none() {
+                                        if std::mem::take(&mut self.fresh) {
+                                            look::select_all(ui, &r, &self.form.text[i]);
+                                        }
+                                        r.request_focus();
+                                    }
                                     if r.changed() {
                                         // An edit of the result row: the solver calculates an other variable.
                                         let typed =
@@ -400,11 +555,7 @@ impl App {
                                 .font(egui::FontId::monospace(20.0))
                                 .desired_width(ui.available_width() - 50.0),
                         );
-                        if std::mem::take(&mut self.focus_input) {
-                            r.request_focus();
-                        }
-                        if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                            self.calc.evaluate(&mut self.ctx);
+                        if self.palette.is_none() {
                             r.request_focus();
                         }
                         ui.label(RichText::new(mode).color(ACCENT));
@@ -561,6 +712,9 @@ impl eframe::App for App {
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
             self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
         }
+        if self.palette.is_none() {
+            self.keyboard(ui);
+        }
         egui::Panel::top("tabs")
             .show_separator_line(false)
             .frame(look::panel())
@@ -579,7 +733,7 @@ impl eframe::App for App {
                 _ => {
                     ui.label(
                         RichText::new(
-                            " Ctrl+P go to · click a result to copy it · F2 3D surface mode",
+                            " ←→ tab · Tab focus · ↑↓ select · Enter use/solve/= · Del clear · Ctrl+Y copy · Ctrl+P go to · F2 3D · Esc quit",
                         )
                         .color(GRAY),
                     );
@@ -591,6 +745,7 @@ impl eframe::App for App {
             CALC_TAB => self.calculator(ui),
             _ => self.converter(ui),
         }
+        self.scroll = false;
         self.palette_window(ui);
         screenshot(ui);
     }

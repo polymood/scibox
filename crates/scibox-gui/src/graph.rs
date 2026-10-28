@@ -36,27 +36,30 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             boxed(
                 ui,
                 "f(x), equations, r = f(t), (x(t), y(t)), z = f(x, y) · separate the items with ;",
-                true,
+                app.focus == 0,
                 false,
                 |ui| {
-                    ui.add(
+                    let r = ui.add(
                         TextEdit::singleline(&mut app.graph[0])
                             .frame(egui::Frame::new())
                             .desired_width(f32::INFINITY),
                     );
+                    keyboard_focus(app, ui, 0, &r);
                 },
             );
         });
     egui::Panel::right("graph settings").exact_size(290.0).show_separator_line(false).frame(look::panel()).show(ui, |ui| {
-        boxed(ui, "Settings", false, true, |ui| {
+        boxed(ui, "Settings · Tab, ↑↓: next field", app.focus > 0, true, |ui| {
             egui::Grid::new("settings").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
                 for (k, (label, default)) in SETTINGS.iter().enumerate() {
                     let text = &mut app.graph[k + 1];
                     let ok = text.is_empty() || calc::eval(text, &app.ctx).is_ok();
-                    ui.label(*label);
+                    let label = RichText::new(*label);
+                    ui.label(if app.focus == k + 1 { label.color(ACCENT).strong() } else { label });
                     let hint = if default.is_empty() { "auto" } else { default };
                     let color = if ok { look::TEXT } else { look::RED };
-                    ui.add(TextEdit::singleline(text).hint_text(hint).text_color(color).desired_width(110.0));
+                    let r = ui.add(TextEdit::singleline(text).hint_text(hint).text_color(color).desired_width(110.0));
+                    keyboard_focus(app, ui, k + 1, &r);
                     ui.end_row();
                     if k % 2 == 1 && k < 6 {
                         ui.end_row();
@@ -147,6 +150,19 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 }
             });
         });
+}
+
+/// Give the keyboard to the field `i` if it has the focus of the TUI keys. A click on a field gives it the focus.
+fn keyboard_focus(app: &mut App, ui: &Ui, i: usize, r: &egui::Response) {
+    if r.gained_focus() && app.focus != i {
+        app.focus = i;
+    }
+    if app.focus == i && app.palette.is_none() {
+        if std::mem::take(&mut app.fresh) {
+            look::select_all(ui, r, &app.graph[i]);
+        }
+        r.request_focus();
+    }
 }
 
 /// Zoom at the pointer with the wheel. Move the graph with a drag (2D only).

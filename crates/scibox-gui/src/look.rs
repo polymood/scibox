@@ -161,3 +161,15 @@ pub fn key(ui: &mut Ui, label: &str, color: Color32, size: egui::Vec2) -> Respon
     );
     r
 }
+
+/// Select all the text of a text field: the next key replaces it.
+pub fn select_all(ui: &Ui, r: &Response, text: &str) {
+    if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), r.id) {
+        state
+            .cursor
+            .set_char_range(Some(egui::text_selection::CCursorRange::select_all_str(
+                text,
+            )));
+        state.store(ui.ctx(), r.id);
+    }
+}
