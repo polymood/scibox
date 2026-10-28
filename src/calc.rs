@@ -4,13 +4,16 @@
 //! Constants: pi, e, tau, ans.
 //! Functions: see `call`.
 
+#[derive(Default)]
 pub struct Ctx {
     /// The last result. The name `ans` refers to this value.
     pub ans: f64,
     /// If true, trigonometric functions use degrees. If false, they use radians.
     pub deg: bool,
-    /// The value of the variable `x` (graph only).
+    /// The values of the graph variables `x`, `y` and `t`. `None` means that the name is unknown.
     pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub t: Option<f64>,
 }
 
 pub fn eval(src: &str, ctx: &Ctx) -> Result<f64, String> {
@@ -167,7 +170,14 @@ impl Parser<'_> {
             "e" => Ok(std::f64::consts::E),
             "tau" => Ok(std::f64::consts::TAU),
             "ans" => Ok(self.ctx.ans),
-            "x" if self.ctx.x.is_some() => Ok(self.ctx.x.unwrap_or_default()),
+            "x" | "y" | "t" => {
+                let v = match name.as_str() {
+                    "x" => self.ctx.x,
+                    "y" => self.ctx.y,
+                    _ => self.ctx.t,
+                };
+                v.ok_or(format!("unknown name '{name}'"))
+            }
             _ => Err(format!("unknown name '{name}'")),
         }
     }
@@ -242,6 +252,7 @@ mod tests {
                 ans: 7.0,
                 deg: false,
                 x: Some(3.0),
+                ..Default::default()
             },
         )
         .unwrap()
@@ -265,7 +276,7 @@ mod tests {
         let deg = Ctx {
             ans: 0.0,
             deg: true,
-            x: None,
+            ..Default::default()
         };
         assert!((eval("cos(60)", &deg).unwrap() - 0.5).abs() < 1e-12);
         assert!(eval("2 +", &deg).is_err());

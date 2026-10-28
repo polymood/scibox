@@ -8,9 +8,11 @@ You can use the keyboard or the mouse.
 
 ![Formulas tab: link budget solved for the received power](assets/screenshots/formulas.png)
 
-| Converter | Graph |
+| Graph | 3D graph |
 | --- | --- |
-| ![Converter tab: 20 dBm in all the power units](assets/screenshots/converter.png) | ![Graph tab: three functions of x](assets/screenshots/graph.png) |
+| ![Graph tab: a function, a circle, and the line x = 6](assets/screenshots/graph.png) | ![Graph tab: the surface z = sin(x) cos(y)](assets/screenshots/graph3d.png) |
+| **Polar and parametric curves** | **Converter** |
+| ![Graph tab: polar and parametric curves](assets/screenshots/curves.png) | ![Converter tab: 20 dBm in all the power units](assets/screenshots/converter.png) |
 | **Calculator** | **Go to (Ctrl+P)** |
 | ![Calculator tab with history and keypad](assets/screenshots/calc.png) | ![Go to window: search for "db"](assets/screenshots/palette.png) |
 
@@ -22,7 +24,7 @@ You can use the keyboard or the mouse.
 - **Number base**: decimal, hexadecimal, binary, and octal (128-bit integers).
 - **Formulas**: more than 130 formulas in 7 domains (Decibels & RF, Electronics, Mechanics, Structures, Thermal, Fluids, Physics).
   You can solve each formula for any variable.
-- **Graph**: plot one or more functions of `x`.
+- **Graph**: plot functions, equations in x and y, polar curves, parametric curves, and 3D surfaces.
 - **Calculator**: a scientific calculator with a keypad that you can click.
 - **Go to**: press Ctrl+P and type a part of a name to go to a category, a unit, or a formula.
 - **Copy**: copy a result to the clipboard with Ctrl+Y or with a mouse click.
@@ -84,11 +86,31 @@ For example, the formula "dBm to watt" also converts watts to dBm.
 
 ### Graph tab
 
-1. Type one or more functions of `x`. Use `;` between the functions, for example `sin(x); x^2/10`.
-2. Type the minimum and the maximum value of `x`.
+1. Type one or more items. Use `;` between the items.
+2. Type the minimum and the maximum value of x.
+3. Type the y range, or keep the y fields empty. An empty y field gives an automatic range.
+
+| Item | Examples |
+| --- | --- |
+| Function | `sin(x)`, `y = x^3 / 20` |
+| Equation in x and y | `x = 2`, `x^2 + y^2 = 9`, `y^2 = x^3 - x` |
+| Polar curve (t from 0 to 2π) | `r = 2 + cos(5t)` |
+| Parametric curve (t from 0 to 2π) | `(4cos(3t), 4sin(2t))` |
+| 3D surface | `z = sin(x) * cos(y)` |
 
 Turn the mouse wheel on the graph to zoom. Drag the graph to move it.
+For a 3D surface, drag the graph to turn the view.
 The trigonometric functions of the graph use radians.
+
+Press F2 to change the line style:
+
+- **solid**: octant characters (2 × 4 pixels in each cell, no gaps).
+- **dots**: braille characters.
+- **blocks**: quadrant characters.
+- **half blocks**: the half block characters.
+
+The solid style needs a font with the octant characters of Unicode 16 (for example, a recent Cascadia Code in Windows Terminal).
+If you see empty boxes, press F2 to select a different style.
 
 ### Calculator tab
 

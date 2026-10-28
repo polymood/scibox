@@ -1,6 +1,7 @@
 mod calc;
 #[rustfmt::skip]
 mod formulas;
+mod graph;
 mod palette;
 mod ui;
 mod units;
@@ -46,8 +47,11 @@ pub enum Kind {
 pub struct Areas {
     pub tabs: Vec<Rect>,
     pub search: Rect,
-    /// The inner areas of the three panes (lists, or graph input fields).
+    /// The inner areas of the three list panes.
     pub panes: [Rect; 3],
+    /// The graph input fields.
+    pub fields: Vec<Rect>,
+    /// The plot area of the graph.
     pub chart: Rect,
     pub keys: Vec<Rect>,
     /// The inner area of the palette. The first line is the query, the other lines are the list.
@@ -67,16 +71,22 @@ pub struct App {
     pub unknown: usize,
     /// The formula variables that the user changed, the most recent last.
     edited: Vec<usize>,
-    /// Graph: the functions, x min, x max.
-    pub graph: [String; 3],
+    /// Graph: the functions, x min, x max, y min, y max.
+    pub graph: [String; 5],
+    /// The graph line style: an index in `graph::MARKERS`.
+    pub marker: usize,
+    /// The 3D view angles (yaw, pitch) in radians.
+    pub view: (f64, f64),
+    /// The y range of the last 2D graph.
+    pub y_shown: (f64, f64),
     pub calc_input: String,
     pub history: Vec<(String, String)>,
     pub ctx: Ctx,
     /// True just after a new selection or "=". Then the next character replaces the text.
     fresh: bool,
     pub pressed: Option<usize>,
-    /// The last mouse column during a drag on the graph.
-    drag: Option<u16>,
+    /// The last mouse position during a drag on the graph.
+    drag: Option<(u16, u16)>,
     pub entries: Vec<Entry>,
     pub palette: Option<Palette>,
     /// A message for the status line, for example "Copied".
@@ -95,13 +105,21 @@ impl App {
             fin: Vec::new(),
             unknown: 0,
             edited: Vec::new(),
-            graph: ["sin(x); x^2 / 10".into(), "-10".into(), "10".into()],
+            graph: [
+                "2sin(x); x^2 + y^2 = 9; x = 6".into(),
+                "-10".into(),
+                "10".into(),
+                String::new(),
+                String::new(),
+            ],
+            marker: 0,
+            view: (0.6, 0.6),
+            y_shown: (-1.0, 1.0),
             calc_input: String::new(),
             history: Vec::new(),
             ctx: Ctx {
-                ans: 0.0,
                 deg: true,
-                x: None,
+                ..Default::default()
             },
             fresh: false,
             pressed: None,
@@ -139,6 +157,11 @@ impl App {
 
     pub fn formula(&self) -> &'static Formula {
         &DOMAINS[self.sel(0)].formulas[self.sel(1)]
+    }
+
+    /// The number of panes (or input fields) that can have the focus.
+    fn pane_count(&self) -> usize {
+        if self.kind() == Kind::Graph { 5 } else { 3 }
     }
 
     /// The number of rows in a pane.
@@ -315,10 +338,13 @@ impl App {
             KeyCode::Char('y') if ctrl => self.copy_current(),
             KeyCode::Left => self.set_tab((self.tab + TABS - 1) % TABS),
             KeyCode::Right => self.set_tab((self.tab + 1) % TABS),
-            KeyCode::Tab => self.focus = (self.focus + 1) % 3,
-            KeyCode::BackTab => self.focus = (self.focus + 2) % 3,
+            KeyCode::F(2) => self.marker = (self.marker + 1) % graph::MARKERS.len(),
+            KeyCode::Tab => self.focus = (self.focus + 1) % self.pane_count(),
+            KeyCode::BackTab => {
+                self.focus = (self.focus + self.pane_count() - 1) % self.pane_count()
+            }
             KeyCode::Up if kind == Kind::Graph => self.focus = self.focus.saturating_sub(1),
-            KeyCode::Down if kind == Kind::Graph => self.focus = (self.focus + 1).min(2),
+            KeyCode::Down if kind == Kind::Graph => self.focus = (self.focus + 1).min(4),
             KeyCode::Up => self.move_sel(self.focus, -1),
             KeyCode::Down => self.move_sel(self.focus, 1),
             KeyCode::Enter => match kind {
@@ -445,7 +471,7 @@ impl App {
                 self.status = None;
                 self.click(pos, button);
             }
-            MouseEventKind::Drag(MouseButton::Left) => self.pan(m.column),
+            MouseEventKind::Drag(MouseButton::Left) => self.drag_to(m.column, m.row),
             MouseEventKind::Up(_) => {
                 self.pressed = None;
                 self.drag = None;
@@ -486,10 +512,10 @@ impl App {
                 }
             }
             Kind::Graph => {
-                if let Some(i) = self.areas.panes.iter().position(|r| r.contains(pos)) {
+                if let Some(i) = self.areas.fields.iter().position(|r| r.contains(pos)) {
                     self.focus = i;
                 } else if self.areas.chart.contains(pos) {
-                    self.drag = Some(pos.x);
+                    self.drag = Some((pos.x, pos.y));
                 }
             }
             kind => {
@@ -530,27 +556,49 @@ impl App {
                 p.list.select_next()
             }
         } else if self.kind() == Kind::Graph && self.areas.chart.contains(pos) {
-            // Zoom the x range around its center.
+            // Zoom around the center. An automatic y range stays automatic.
+            let zoom = if d < 0 { 0.8 } else { 1.25 };
             if let Some((a, b)) = self.x_range() {
-                let zoom = if d < 0 { 0.8 } else { 1.25 };
-                let (c, h) = ((a + b) / 2.0, (b - a) / 2.0 * zoom);
-                self.graph[1] = calc::fmt(c - h);
-                self.graph[2] = calc::fmt(c + h);
+                self.set_range(1, a, b, zoom, 0.0);
+            }
+            if let Some((a, b)) = self.y_fields() {
+                self.set_range(3, a, b, zoom, 0.0);
             }
         } else if let Some(pane) = self.areas.panes.iter().position(|r| r.contains(pos)) {
             self.move_sel(pane, d);
         }
     }
 
-    /// Move the graph x range with the mouse.
-    fn pan(&mut self, col: u16) {
-        let (Some(last), Some((a, b))) = (self.drag, self.x_range()) else {
+    /// Move the graph with the mouse, or turn the 3D view.
+    fn drag_to(&mut self, col: u16, row: u16) {
+        let (Some((c0, r0)), Some((a, b))) = (self.drag, self.x_range()) else {
             return;
         };
-        let dx = (last as f64 - col as f64) * (b - a) / self.areas.chart.width.max(1) as f64;
-        self.graph[1] = calc::fmt(a + dx);
-        self.graph[2] = calc::fmt(b + dx);
-        self.drag = Some(col);
+        let (dx, dy) = (col as f64 - c0 as f64, row as f64 - r0 as f64);
+        self.drag = Some((col, row));
+        if graph::is_3d(&self.graph[0]) {
+            self.view.0 -= dx * 0.08;
+            self.view.1 = (self.view.1 + dy * 0.08).clamp(0.0, std::f64::consts::FRAC_PI_2);
+            return;
+        }
+        let plot = self.areas.chart;
+        self.set_range(1, a, b, 1.0, -dx * (b - a) / plot.width.max(1) as f64);
+        let (lo, hi) = self.y_fields().unwrap_or(self.y_shown);
+        self.set_range(3, lo, hi, 1.0, dy * (hi - lo) / plot.height.max(1) as f64);
+    }
+
+    /// Write the range (a, b), zoomed around its center and moved by `shift`, in the fields `i` and `i + 1`.
+    fn set_range(&mut self, i: usize, a: f64, b: f64, zoom: f64, shift: f64) {
+        let (c, h) = ((a + b) / 2.0 + shift, (b - a) / 2.0 * zoom);
+        self.graph[i] = calc::fmt(c - h);
+        self.graph[i + 1] = calc::fmt(c + h);
+    }
+
+    /// The y range of the fields, or `None` if the y range is automatic.
+    pub fn y_fields(&self) -> Option<(f64, f64)> {
+        let a = calc::eval(&self.graph[3], &self.ctx).ok()?;
+        let b = calc::eval(&self.graph[4], &self.ctx).ok()?;
+        (a < b).then_some((a, b))
     }
 
     pub fn x_range(&self) -> Option<(f64, f64)> {
@@ -630,10 +678,16 @@ fn main() -> std::io::Result<()> {
     let result = (|| {
         while !app.quit {
             terminal.draw(|f| ui::draw(f, &mut app))?;
-            match event::read()? {
-                Event::Key(k) if k.kind == KeyEventKind::Press => app.on_key(k),
-                Event::Mouse(m) => app.on_mouse(m),
-                _ => {}
+            // Wait for an event that can change the screen. Do not draw again for mouse moves.
+            loop {
+                match event::read()? {
+                    Event::Key(k) if k.kind == KeyEventKind::Press => app.on_key(k),
+                    Event::Mouse(m) if m.kind == MouseEventKind::Moved => continue,
+                    Event::Mouse(m) => app.on_mouse(m),
+                    Event::Resize(..) => {}
+                    _ => continue,
+                }
+                break;
             }
         }
         Ok(())

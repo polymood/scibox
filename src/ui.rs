@@ -1,22 +1,14 @@
-use crate::calc::{self, Ctx, fmt};
+use crate::calc::{self, fmt};
 use crate::formulas::DOMAINS;
 use crate::units::GROUPS;
 use crate::{App, KEYS, Kind};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
-use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Axis, Block, Chart, Clear, Dataset, GraphType, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
 
 const ACCENT: Color = Color::Cyan;
-const CURVES: [Color; 5] = [
-    Color::Cyan,
-    Color::Yellow,
-    Color::Magenta,
-    Color::Green,
-    Color::Red,
-];
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let [top, body, help] = Layout::vertical([
@@ -36,8 +28,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             " Ctrl+P go to · ←→ tab · Tab focus · ↑↓ select · type a value · Enter: solve for it · Ctrl+Y copy"
         }
         Kind::Graph => {
-            draw_graph(f, app, body);
-            " Ctrl+P go to · ←→ tab · Tab next field · mouse wheel: zoom · drag: move · Esc quit"
+            crate::graph::draw(f, app, body);
+            " Ctrl+P go to · ←→ tab · Tab next field · F2 line style · wheel: zoom · drag: move or turn"
         }
         Kind::Calc => {
             draw_calc(f, app, body);
@@ -89,7 +81,7 @@ fn draw_tabs(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-fn block(title: &str, focused: bool) -> Block<'_> {
+pub fn block(title: &str, focused: bool) -> Block<'_> {
     let color = if focused { ACCENT } else { Color::DarkGray };
     Block::bordered()
         .title(title)
@@ -120,7 +112,7 @@ fn list_pane(
 }
 
 /// An input text with a cursor.
-fn input_line(text: &str, cursor: bool) -> Line<'_> {
+pub fn input_line(text: &str, cursor: bool) -> Line<'_> {
     let mut spans = vec![Span::from(text).bold()];
     if cursor {
         spans.push(Span::from("█").fg(ACCENT));
@@ -286,136 +278,6 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
         vars_block = vars_block.title_bottom(Line::from(format!(" {e} ")).red().right_aligned());
     }
     list_pane(f, app, 2, vars_area, vars_block, items.collect());
-}
-
-fn draw_graph(f: &mut Frame, app: &mut App, area: Rect) {
-    let [fields, chart_area] =
-        Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
-    let field_areas: [Rect; 3] = Layout::horizontal([
-        Constraint::Fill(1),
-        Constraint::Length(14),
-        Constraint::Length(14),
-    ])
-    .areas(fields);
-    let titles = [
-        " f(x) =  (separate functions with ;) ",
-        " x min ",
-        " x max ",
-    ];
-    for i in 0..3 {
-        let focused = app.focus == i;
-        let p = Paragraph::new(input_line(&app.graph[i], focused)).block(block(titles[i], focused));
-        f.render_widget(p, field_areas[i]);
-        app.areas.panes[i] = field_areas[i];
-    }
-    app.areas.chart = chart_area;
-
-    let mut chart_block = block(" Graph (angles in radians) ", false);
-    let Some((a, b)) = app.x_range() else {
-        let msg = Line::from(" x min must be a number less than x max ").red();
-        f.render_widget(chart_block.title_bottom(msg), chart_area);
-        return;
-    };
-
-    // Calculate each function at one point for each braille dot column.
-    let n = (chart_area.width as usize * 2).max(2);
-    let mut ctx = Ctx {
-        ans: app.ctx.ans,
-        deg: false,
-        x: None,
-    };
-    let mut curves: Vec<(&str, Vec<(f64, f64)>)> = Vec::new();
-    for expr in app.graph[0]
-        .split(';')
-        .map(str::trim)
-        .filter(|e| !e.is_empty())
-    {
-        let mut points = Vec::with_capacity(n + 1);
-        for k in 0..=n {
-            let x = a + (b - a) * k as f64 / n as f64;
-            ctx.x = Some(x);
-            match calc::eval(expr, &ctx) {
-                Ok(y) if y.is_finite() => points.push((x, y)),
-                Ok(_) => {}
-                Err(e) => {
-                    let msg = Line::from(format!(" {expr}: {e} ")).red();
-                    chart_block = chart_block.title_bottom(msg);
-                    break;
-                }
-            }
-        }
-        curves.push((expr, points));
-    }
-
-    // The y range: from the 1st to the 99th percentile, so that poles (tan, 1/x) do not hide the curves.
-    let mut ys: Vec<f64> = curves
-        .iter()
-        .flat_map(|c| c.1.iter().map(|p| p.1))
-        .collect();
-    ys.sort_by(f64::total_cmp);
-    let (mut lo, mut hi) = match ys.len() {
-        0 => (-1.0, 1.0),
-        len => (ys[len / 100], ys[len - 1 - len / 100]),
-    };
-    if hi - lo < 1e-12 {
-        (lo, hi) = (lo - 1.0, hi + 1.0);
-    }
-    let pad = (hi - lo) * 0.05;
-    (lo, hi) = (lo - pad, hi + pad);
-
-    // The axes y = 0 and x = 0, if they are visible.
-    let axes = [[(a, 0.0), (b, 0.0)], [(0.0, lo), (0.0, hi)]];
-    let visible = [lo < 0.0 && hi > 0.0, a < 0.0 && b > 0.0];
-    let mut datasets: Vec<Dataset> = axes
-        .iter()
-        .zip(visible)
-        .filter(|(_, v)| *v)
-        .map(|(line, _)| {
-            Dataset::default()
-                .marker(Marker::Braille)
-                .graph_type(GraphType::Line)
-                .dark_gray()
-                .data(line)
-        })
-        .collect();
-    for (i, (expr, points)) in curves.iter().enumerate() {
-        datasets.push(
-            Dataset::default()
-                .name(*expr)
-                .marker(Marker::Braille)
-                .graph_type(GraphType::Line)
-                .fg(CURVES[i % CURVES.len()])
-                .data(points),
-        );
-    }
-    let labels = |a: f64, b: f64| [short(a), short((a + b) / 2.0), short(b)];
-    let chart = Chart::new(datasets)
-        .block(chart_block)
-        .x_axis(
-            Axis::default()
-                .bounds([a, b])
-                .labels(labels(a, b))
-                .dark_gray(),
-        )
-        .y_axis(
-            Axis::default()
-                .bounds([lo, hi])
-                .labels(labels(lo, hi))
-                .dark_gray(),
-        );
-    f.render_widget(chart, chart_area);
-}
-
-/// A short number for the axis labels.
-fn short(v: f64) -> String {
-    let a = v.abs();
-    if a != 0.0 && !(1e-3..1e5).contains(&a) {
-        format!("{v:.2e}")
-    } else {
-        let s = format!("{v:.3}");
-        let s = s.trim_end_matches('0').trim_end_matches('.');
-        if s == "-0" { "0".into() } else { s.into() }
-    }
 }
 
 fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
