@@ -65,6 +65,9 @@ pub struct App {
     pub view: (f64, f64),
     /// The 3D surface mode: an index in `graph::SURFACE_MODES`.
     pub surface: usize,
+    /// Show the analysis of the graph (F4), and its text for the sidebar.
+    pub analysis: bool,
+    pub report: Vec<(ratatui::style::Color, String)>,
     /// The y range of the last 2D graph.
     pub y_shown: (f64, f64),
     pub calc: Calculator,
@@ -97,6 +100,8 @@ impl App {
             marker: 0,
             view: (0.6, 0.6),
             surface: 0,
+            analysis: false,
+            report: Vec::new(),
             y_shown: (-1.0, 1.0),
             calc: Calculator::default(),
             ctx: Ctx {
@@ -268,6 +273,7 @@ impl App {
             KeyCode::Left => self.set_tab((self.tab + TABS - 1) % TABS),
             KeyCode::Right => self.set_tab((self.tab + 1) % TABS),
             KeyCode::F(2) => self.next_style(),
+            KeyCode::F(4) => self.analysis = !self.analysis,
             KeyCode::F(3) => {
                 self.ctx.notation = self.ctx.notation.next();
                 self.status = Some(format!("Notation: {}", self.ctx.notation.name()));

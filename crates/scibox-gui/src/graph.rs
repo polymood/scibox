@@ -25,6 +25,13 @@ const HEIGHTS: [Color32; 5] = [
 ];
 /// The 3D surface modes. F2 selects the next mode.
 pub const SURFACE_MODES: [&str; 3] = ["solid", "solid + mesh", "wireframe"];
+/// The x and the y range of a graph.
+type Ranges = ((f64, f64), (f64, f64));
+/// The analysis text: a color and a line.
+pub type Report = Vec<(Color32, String)>;
+
+/// The analysis items that the graph can show. F4 shows or hides all of them.
+pub const SHOW: [&str; 4] = ["min / max", "roots", "mean", "labels"];
 const GRID: Color32 = Color32::from_rgb(0x2a, 0x30, 0x38);
 const LABEL: Color32 = Color32::from_rgb(0x8a, 0x93, 0x9e);
 
@@ -49,7 +56,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             );
         });
     egui::Panel::right("graph settings").exact_size(290.0).show_separator_line(false).frame(look::panel()).show(ui, |ui| {
-        boxed(ui, "Settings · Tab, ↑↓: next field", app.focus > 0, true, |ui| {
+        boxed(ui, "Settings", app.focus > 0, true, |ui| {
             egui::Grid::new("settings").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
                 for (k, (label, default)) in SETTINGS.iter().enumerate() {
                     let text = &mut app.graph[k + 1];
@@ -76,12 +83,30 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 }
             });
             ui.add_space(8.0);
+            ui.label("Analysis (F4)");
+            ui.horizontal_wrapped(|ui| {
+                for (i, name) in SHOW.iter().enumerate() {
+                    if look::item(ui, app.show[i], *name).clicked() {
+                        app.show[i] = !app.show[i];
+                    }
+                }
+            });
+            ui.add_space(8.0);
+            if ui.button("Export PNG (Ctrl+S)").clicked() {
+                app.export = true;
+            }
             if ui.button("Reset the view").clicked() {
                 for (k, (_, default)) in SETTINGS.iter().enumerate().take(4) {
                     app.graph[k + 1] = default.to_string();
                 }
                 app.view = (0.6, 0.6);
             }
+            ui.add_space(8.0);
+            egui::ScrollArea::vertical().max_height(ui.available_height() - 70.0).show(ui, |ui| {
+                for (color, text) in &app.report {
+                    ui.label(RichText::new(text).color(*color));
+                }
+            });
             ui.add_space(8.0);
             ui.label(RichText::new("Wheel: zoom at the pointer\nDrag: move (3D: turn)\nEmpty y range: automatic").color(look::GRAY));
         });
@@ -110,7 +135,9 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 };
                 match plot::surface(&items) {
                     Some(expr) => {
-                        draw_3d(&painter, rect, expr, &s, app.view, app.surface);
+                        let report =
+                            draw_3d(&painter, rect, expr, &s, app.view, app.surface, app.show);
+                        set_report(app, ui, report);
                         if response.dragged() {
                             let d = response.drag_delta();
                             app.view.0 += d.x as f64 * 0.01;
@@ -121,9 +148,14 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                         zoom_and_pan(app, ui, &response, rect, shown, false);
                     }
                     None => {
-                        let shown = draw_2d(&painter, rect, &items, &s);
+                        let hover = response.hover_pos().filter(|_| !response.dragged());
+                        let (shown, report) = draw_2d(&painter, rect, &items, &s, app.show, hover);
+                        set_report(app, ui, report);
                         zoom_and_pan(app, ui, &response, rect, shown, true);
                     }
+                }
+                if std::mem::take(&mut app.export) {
+                    export_png(ui.ctx(), rect, app.export_done.clone());
                 }
                 // The legend and the syntax errors, at the top left: a square of the color of each curve.
                 let mut y = rect.top() + 8.0;
@@ -150,6 +182,72 @@ pub fn show(app: &mut App, ui: &mut Ui) {
                 }
             });
         });
+}
+
+/// Keep the analysis text for the sidebar. The sidebar shows it at the next frame.
+fn set_report(app: &mut App, ui: &Ui, report: Vec<(Color32, String)>) {
+    if report != app.report {
+        app.report = report;
+        ui.ctx().request_repaint();
+    }
+}
+
+/// Save the plot area as a PNG file in the home folder. The result message goes to `done`.
+fn export_png(
+    ctx: &egui::Context,
+    rect: Rect,
+    done: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+) {
+    let ppp = ctx.pixels_per_point();
+    let repaint = ctx.clone();
+    let save = move |image: std::sync::Arc<egui::ColorImage>| {
+        let [w, h] = image.size;
+        let x0 = ((rect.left() * ppp).round().max(0.0) as usize).min(w);
+        let y0 = ((rect.top() * ppp).round().max(0.0) as usize).min(h);
+        let x1 = ((rect.right() * ppp).round() as usize).clamp(x0, w);
+        let y1 = ((rect.bottom() * ppp).round() as usize).clamp(y0, h);
+        let home = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .unwrap_or_default();
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let path = std::path::PathBuf::from(home).join(format!("scibox-graph-{secs}.png"));
+        let message = match tiny_skia::Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32) {
+            Some(mut pixmap) => {
+                for (k, px) in pixmap.pixels_mut().iter_mut().enumerate() {
+                    let (x, y) = (x0 + k % (x1 - x0), y0 + k / (x1 - x0));
+                    let c = image.pixels[y * w + x];
+                    *px = tiny_skia::ColorU8::from_rgba(c.r(), c.g(), c.b(), 255).premultiply();
+                }
+                match pixmap.save_png(&path) {
+                    Ok(()) => format!("Saved {}", path.display()),
+                    Err(e) => format!("PNG export failed: {e}"),
+                }
+            }
+            None => "PNG export failed: the graph is empty".into(),
+        };
+        if let Ok(mut d) = done.lock() {
+            *d = Some(message);
+        }
+        repaint.request_repaint();
+    };
+    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+        egui::ScreenshotCallback::new(save),
+    ));
+}
+
+/// Write a label with a dark background, so that it is readable above the curves.
+fn label(painter: &Painter, pos: Pos2, align: Align2, text: String, color: Color32) {
+    let galley = painter.layout_no_wrap(text, FontId::monospace(12.0), color);
+    let rect = align.anchor_size(pos, galley.size()).expand(2.0);
+    painter.rect_filled(rect, 0.0, Color32::from_black_alpha(190));
+    painter.galley(rect.min + egui::vec2(2.0, 2.0), galley, color);
+}
+
+/// A point marker: a filled circle with a dark border.
+fn dot(painter: &Painter, pos: Pos2, radius: f32, color: Color32) {
+    painter.circle(pos, radius, color, Stroke::new(1.5, Color32::BLACK));
 }
 
 /// Give the keyboard to the field `i` if it has the focus of the TUI keys. A click on a field gives it the focus.
@@ -223,12 +321,16 @@ fn ticks(lo: f64, hi: f64, count: f64) -> Vec<f64> {
 }
 
 /// Draw a 2D graph and return the ranges that it shows.
+/// `show`: the analysis items (see `SHOW`). `hover`: the mouse pointer, for the value readout.
+/// Return the ranges that the graph shows, and the analysis text.
 fn draw_2d(
     painter: &Painter,
     rect: Rect,
     items: &[(String, Result<Item, String>)],
     s: &Settings,
-) -> ((f64, f64), (f64, f64)) {
+    show: [bool; 4],
+    hover: Option<Pos2>,
+) -> (Ranges, Report) {
     let aspect = (rect.height() / rect.width()) as f64;
     let w = rect.width() as usize;
     let grid = (
@@ -296,7 +398,122 @@ fn draw_2d(
             }
         }
     }
-    (p.x, p.y)
+
+    // The analysis of each function: markers, labels, and a text for the sidebar.
+    let mut report = Vec::new();
+    let xy = |p: plot::Point| format!("({}, {})", short(p.0), short(p.1));
+    for an in plot::analyze(items, &p) {
+        let color = CURVES[an.item % CURVES.len()];
+        report.push((color, format!("■ {}", items[an.item].0)));
+        report.push((
+            LABEL,
+            format!("  max {} at x = {}", short(an.max.1), short(an.max.0)),
+        ));
+        report.push((
+            LABEL,
+            format!("  min {} at x = {}", short(an.min.1), short(an.min.0)),
+        ));
+        report.push((LABEL, format!("  mean {}", short(an.mean))));
+        if !an.roots.is_empty() {
+            let roots: Vec<String> = an.roots.iter().take(6).map(|r| short(r.0)).collect();
+            report.push((LABEL, format!("  roots {}", roots.join(", "))));
+        }
+        if show[2] && an.mean.is_finite() {
+            let y = to_screen(0.0, an.mean).y;
+            painter.extend(egui::Shape::dashed_line(
+                &[pos2(rect.left(), y), pos2(rect.right(), y)],
+                Stroke::new(1.0, color),
+                6.0,
+                4.0,
+            ));
+            if show[3] {
+                label(
+                    painter,
+                    pos2(rect.right() - 60.0, y - 3.0),
+                    Align2::RIGHT_BOTTOM,
+                    format!("mean {}", short(an.mean)),
+                    color,
+                );
+            }
+        }
+        if show[1] {
+            for &r in &an.roots {
+                painter.circle_stroke(to_screen(r.0, 0.0), 4.0, Stroke::new(1.5, color));
+                if show[3] {
+                    label(
+                        painter,
+                        to_screen(r.0, 0.0) + egui::vec2(4.0, 6.0),
+                        Align2::LEFT_TOP,
+                        short(r.0),
+                        color,
+                    );
+                }
+            }
+        }
+        if show[0] {
+            for &e in &an.extrema {
+                dot(painter, to_screen(e.0, e.1), 3.5, color);
+                if show[3] && e != an.max && e != an.min {
+                    label(
+                        painter,
+                        to_screen(e.0, e.1) + egui::vec2(0.0, -8.0),
+                        Align2::CENTER_BOTTOM,
+                        xy(e),
+                        color,
+                    );
+                }
+            }
+            for (name, e) in [("max", an.max), ("min", an.min)] {
+                let pos = to_screen(e.0, e.1);
+                dot(painter, pos, 5.0, color);
+                if show[3] {
+                    let (align, dy) = if name == "max" {
+                        (Align2::CENTER_BOTTOM, -9.0)
+                    } else {
+                        (Align2::CENTER_TOP, 9.0)
+                    };
+                    label(
+                        painter,
+                        pos + egui::vec2(0.0, dy),
+                        align,
+                        format!("{name} {}", xy(e)),
+                        color,
+                    );
+                }
+            }
+        }
+    }
+
+    // The value readout at the mouse pointer: a vertical line, and the value of each function.
+    if let Some(h) = hover.filter(|h| rect.contains(*h)) {
+        let x = a + (b - a) * ((h.x - rect.left()) / rect.width()) as f64;
+        painter.line_segment(
+            [pos2(h.x, rect.top()), pos2(h.x, rect.bottom())],
+            Stroke::new(1.0, LABEL),
+        );
+        let mut lines = vec![(LABEL, format!("x = {}", short(x)))];
+        for (i, (_, item)) in items.iter().enumerate() {
+            if let Some(y) = item
+                .as_ref()
+                .ok()
+                .and_then(|it| plot::value_at(it, x, s.ans))
+            {
+                let color = CURVES[i % CURVES.len()];
+                dot(painter, to_screen(x, y), 4.0, color);
+                lines.push((color, format!("y = {}", short(y))));
+            }
+        }
+        for (k, (color, text)) in lines.into_iter().enumerate() {
+            label(
+                painter,
+                pos2(h.x + 10.0, rect.top() + 10.0 + 18.0 * k as f32),
+                Align2::LEFT_TOP,
+                text,
+                color,
+            );
+        }
+    }
+    ((p.x, p.y), report)
 }
 
 /// Draw z = f(x, y) as a wireframe. The colors show the height.
@@ -308,7 +525,8 @@ fn draw_3d(
     s: &Settings,
     view: (f64, f64),
     mode: usize,
-) {
+    show: [bool; 4],
+) -> Vec<(Color32, String)> {
     let surface = plot::surface_grid(expr, s);
     let scale = (rect.width().min(rect.height()) / 3.4) as f64;
     let c = rect.center();
@@ -357,6 +575,32 @@ fn draw_3d(
             }
         }
     }
+    // The highest and the lowest point, and the analysis text.
+    let mut report = vec![(Color32::WHITE, "■ surface".to_string())];
+    for (name, point) in [("max", surface.high), ("min", surface.low)] {
+        let Some((pos, real)) = point else { continue };
+        let text = format!(
+            "{name} z = {} at ({}, {})",
+            short(real[2]),
+            short(real[0]),
+            short(real[1])
+        );
+        if show[0] {
+            let p = to_screen(pos);
+            dot(painter, p, 5.0, Color32::WHITE);
+            if show[3] {
+                label(
+                    painter,
+                    p + egui::vec2(0.0, -9.0),
+                    Align2::CENTER_BOTTOM,
+                    text.clone(),
+                    Color32::WHITE,
+                );
+            }
+        }
+        report.push((LABEL, format!("  {text}")));
+    }
+    report.push((LABEL, format!("  mean z = {}", short(surface.mean))));
     let (y0, y1) = s.y.unwrap_or(s.x);
     let info = format!(
         "x {}..{}   y {}..{}   z {}..{}",
@@ -381,6 +625,7 @@ fn draw_3d(
         FontId::monospace(13.0),
         ACCENT,
     );
+    report
 }
 
 /// Multiply the brightness of a color by `light`.

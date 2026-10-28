@@ -109,6 +109,14 @@ fn ev(expr: &Expr, ans: f64, x: f64, y: f64, t: f64) -> Option<f64> {
     expr.eval(&ctx).ok().filter(|v| v.is_finite())
 }
 
+/// The value of a function item at `x`, or `None` for another kind of item or a value that is not finite.
+pub fn value_at(item: &Item, x: f64, ans: f64) -> Option<f64> {
+    match item {
+        Item::Function(e) => ev(e, ans, x, 0.0, 0.0),
+        _ => None,
+    }
+}
+
 /// A short number for the axis labels.
 pub fn short(v: f64) -> String {
     let a = v.abs();
@@ -256,6 +264,82 @@ pub fn plot_2d(
     }
 }
 
+/// The analysis of a function on the visible x range.
+pub struct Analysis {
+    /// The index of the item.
+    pub item: usize,
+    pub min: Point,
+    pub max: Point,
+    /// The mean value: the integral divided by the length of the x range.
+    pub mean: f64,
+    /// The local minimums and maximums (not at the ends of the range), at most 20.
+    pub extrema: Vec<Point>,
+    /// The points where the function crosses zero, at most 20.
+    pub roots: Vec<Point>,
+}
+
+/// Analyze the functions of a 2D graph (not the equations and the curves).
+pub fn analyze(items: &[(String, Result<Item, String>)], plot: &Plot2d) -> Vec<Analysis> {
+    let mut out = Vec::new();
+    for (i, parts) in &plot.curves {
+        if !matches!(items.get(*i), Some((_, Ok(Item::Function(_))))) {
+            continue;
+        }
+        let pts: Vec<Point> = parts.iter().flatten().copied().collect();
+        let (Some(&min), Some(&max)) = (
+            pts.iter().min_by(|p, q| p.1.total_cmp(&q.1)),
+            pts.iter().max_by(|p, q| p.1.total_cmp(&q.1)),
+        ) else {
+            continue;
+        };
+        // The trapezoid rule on each part (a part has no poles and no missing points).
+        let (mut area, mut length) = (0.0, 0.0);
+        let (mut extrema, mut roots) = (Vec::new(), Vec::new());
+        for part in parts {
+            for w in part.windows(2) {
+                let ((x0, y0), (x1, y1)) = (w[0], w[1]);
+                area += (y0 + y1) / 2.0 * (x1 - x0);
+                length += x1 - x0;
+                if y0 == 0.0 || (y0 < 0.0) != (y1 < 0.0) && y1 != 0.0 {
+                    let x = if y0 == 0.0 {
+                        x0
+                    } else {
+                        x0 - y0 * (x1 - x0) / (y1 - y0)
+                    };
+                    roots.push((x, 0.0));
+                }
+            }
+            for w in part.windows(3) {
+                let (a, b, c) = (w[0].1, w[1].1, w[2].1);
+                if (b > a && b >= c) || (b < a && b <= c) {
+                    extrema.push(w[1]);
+                }
+            }
+        }
+        // Too many points (a fast oscillation) make the graph unreadable: show none.
+        if extrema.len() > 20 {
+            extrema.clear();
+        }
+        if roots.len() > 20 {
+            roots.clear();
+        }
+        let mean = if length > 0.0 {
+            area / length
+        } else {
+            f64::NAN
+        };
+        out.push(Analysis {
+            item: *i,
+            min,
+            max,
+            mean,
+            extrema,
+            roots,
+        });
+    }
+    out
+}
+
 /// The line segments where `l = r` (marching squares on a grid of `w` x `h` cells).
 fn contour(
     l: &Expr,
@@ -312,6 +396,11 @@ pub struct Surface {
     pub points: Vec<Vec<Option<[f64; 3]>>>,
     /// The real range of z.
     pub z: (f64, f64),
+    /// The lowest and the highest point: the position in the box, and the real (x, y, z).
+    pub low: Option<([f64; 3], [f64; 3])>,
+    pub high: Option<([f64; 3], [f64; 3])>,
+    /// The mean value of z on the grid.
+    pub mean: f64,
 }
 
 /// The low corner of the box and the ends of the axes x, y and z.
@@ -341,6 +430,34 @@ pub fn surface_grid(expr: &Expr, s: &Settings) -> Surface {
     } else {
         1.0
     };
+    // The lowest and the highest grid point, in real units and in the box.
+    let real = |i: usize, j: usize, v: f64| {
+        [
+            a + (b - a) * i as f64 / n as f64,
+            c + (d - c) * j as f64 / n as f64,
+            v,
+        ]
+    };
+    let cells = || {
+        z.iter().enumerate().flat_map(|(i, row)| {
+            row.iter()
+                .enumerate()
+                .filter_map(move |(j, v)| v.map(|v| (i, j, v)))
+        })
+    };
+    let pick = |best: Option<(usize, usize, f64)>| {
+        best.map(|(i, j, v)| {
+            let unit = |k: usize| 2.0 * k as f64 / n as f64 - 1.0;
+            (
+                [unit(i), unit(j), 1.6 * (v - zmin) / span - 0.8],
+                real(i, j, v),
+            )
+        })
+    };
+    let low = pick(cells().min_by(|p, q| p.2.total_cmp(&q.2)));
+    let high = pick(cells().max_by(|p, q| p.2.total_cmp(&q.2)));
+    let count = cells().count().max(1);
+    let mean = cells().map(|c| c.2).sum::<f64>() / count as f64;
     let unit = |k: usize| 2.0 * k as f64 / n as f64 - 1.0;
     let points = z
         .iter()
@@ -355,6 +472,9 @@ pub fn surface_grid(expr: &Expr, s: &Settings) -> Surface {
     Surface {
         points,
         z: (zmin, zmax),
+        low,
+        high,
+        mean,
     }
 }
 
@@ -477,6 +597,36 @@ mod tests {
         let side = surface_grid(&calc::compile("x * y").unwrap(), &s).quads((0.6, 0.5));
         assert!(side.windows(2).all(|w| w[0].depth >= w[1].depth));
         assert!(side[0].depth > side[side.len() - 1].depth);
+    }
+
+    #[test]
+    fn analysis_of_sin() {
+        use std::f64::consts::PI;
+        let items = parse("sin(x)");
+        let s = Settings {
+            x: (0.0, TAU),
+            y: None,
+            t: (0.0, TAU),
+            grid: 20,
+            samples: 720,
+            ans: 0.0,
+        };
+        let plot = plot_2d(&items, &s, 2000, (10, 10), 0.5);
+        let a = &analyze(&items, &plot)[0];
+        assert!((a.max.0 - PI / 2.0).abs() < 0.01 && (a.max.1 - 1.0).abs() < 1e-4);
+        assert!((a.min.0 - 3.0 * PI / 2.0).abs() < 0.01);
+        assert!(a.mean.abs() < 1e-6);
+        assert_eq!(a.extrema.len(), 2);
+        assert!(a.roots.iter().any(|r| (r.0 - PI).abs() < 1e-3));
+        let surface = surface_grid(
+            &calc::compile("x * y").unwrap(),
+            &Settings {
+                x: (-1.0, 1.0),
+                ..s
+            },
+        );
+        assert_eq!(surface.high.unwrap().1[2], 1.0);
+        assert!(surface.mean.abs() < 1e-12);
     }
 
     #[test]

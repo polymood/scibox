@@ -7,7 +7,7 @@ use ratatui::style::{Color, Style, Stylize};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use ratatui::widgets::canvas::{Canvas, Line as Segment};
+use ratatui::widgets::canvas::{Canvas, Line as Segment, Points};
 use scibox_core::calc::{self, Expr};
 use scibox_core::plot::{self, Item, SETTINGS, Settings, short};
 
@@ -116,6 +116,23 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     ]);
     f.render_widget(style, r);
     app.areas.style = r;
+    let r = Rect {
+        y: inner.y + STYLE_ROW + 1,
+        height: 1,
+        ..inner
+    };
+    let state = if app.analysis { " on " } else { " off " };
+    let analysis = Line::from(vec![
+        Span::from(format!(" {:<14}", "analysis")),
+        Span::from(state).black().on_dark_gray(),
+        Span::from(" F4").dark_gray(),
+    ]);
+    f.render_widget(analysis, r);
+    let report_area = Rect {
+        y: inner.y + STYLE_ROW + 3,
+        height: inner.height.saturating_sub(STYLE_ROW + 3),
+        ..inner
+    };
 
     // The title shows each item in the color of its curve.
     let items = plot::parse(&app.graph[0]);
@@ -141,10 +158,18 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         Ok(s) => s,
         Err(e) => return f.render_widget(Line::from(format!(" {e} ")).red(), inner),
     };
+    app.report.clear();
     match plot::surface(&items) {
         Some(expr) => draw_3d(f, app, inner, expr, &s),
         None => draw_2d(f, app, inner, &items, &s),
     }
+    // The analysis text in the sidebar, under the settings.
+    let lines: Vec<Line> = app
+        .report
+        .iter()
+        .map(|(c, t)| Line::from(format!(" {t}")).fg(*c))
+        .collect();
+    f.render_widget(Paragraph::new(lines), report_area);
 }
 
 fn draw_2d(
@@ -168,6 +193,30 @@ fn draw_2d(
     let p = plot::plot_2d(items, s, cols * 2, (cols * 2, rows * 4), aspect);
     app.y_shown = p.y;
     let ((a, b), (lo, hi)) = (p.x, p.y);
+    let analysis = if app.analysis {
+        plot::analyze(items, &p)
+    } else {
+        Vec::new()
+    };
+    for an in &analysis {
+        let color = CURVES[an.item % CURVES.len()];
+        app.report.push((color, format!("■ {}", items[an.item].0)));
+        app.report.push((
+            Color::Gray,
+            format!(" max {} at {}", short(an.max.1), short(an.max.0)),
+        ));
+        app.report.push((
+            Color::Gray,
+            format!(" min {} at {}", short(an.min.1), short(an.min.0)),
+        ));
+        app.report
+            .push((Color::Gray, format!(" mean {}", short(an.mean))));
+        if !an.roots.is_empty() {
+            let roots: Vec<String> = an.roots.iter().take(4).map(|r| short(r.0)).collect();
+            app.report
+                .push((Color::Gray, format!(" roots {}", roots.join(" "))));
+        }
+    }
 
     let canvas = Canvas::default()
         .marker(MARKERS[app.marker].0)
@@ -181,6 +230,41 @@ fn draw_2d(
                         ctx.draw(&Segment::new(w[0].0, w[0].1, w[1].0, w[1].1, color));
                     }
                 }
+            }
+            // The analysis: a dotted mean line, ● at the extrema, ○ at the roots, and labels.
+            ctx.layer();
+            for an in &analysis {
+                let color = CURVES[an.item % CURVES.len()];
+                if an.mean.is_finite() {
+                    let dots: Vec<(f64, f64)> = (0..cols)
+                        .step_by(2)
+                        .map(|k| (a + (b - a) * k as f64 / cols as f64, an.mean))
+                        .collect();
+                    ctx.draw(&Points {
+                        coords: &dots,
+                        color,
+                    });
+                }
+                for e in &an.extrema {
+                    ctx.print(e.0, e.1, Span::from("●").fg(color));
+                }
+                for r in &an.roots {
+                    ctx.print(r.0, 0.0, Span::from("○").fg(color));
+                }
+                ctx.print(
+                    an.max.0,
+                    an.max.1,
+                    Span::from(format!("▲ max {}", short(an.max.1)))
+                        .fg(color)
+                        .bold(),
+                );
+                ctx.print(
+                    an.min.0,
+                    an.min.1,
+                    Span::from(format!("▼ min {}", short(an.min.1)))
+                        .fg(color)
+                        .bold(),
+                );
             }
         });
     f.render_widget(canvas, plot_area);
@@ -268,6 +352,28 @@ fn draw_3d(f: &mut Frame, app: &mut App, inner: Rect, expr: &Expr, s: &Settings)
     f.render_widget(canvas, area);
     if solid {
         draw_solid(f, area, &surface.quads(view), (xs, ys));
+    }
+    // The highest and the lowest point. Write them last: the solid surface does not hide them.
+    if app.analysis {
+        app.report.push((Color::White, "■ surface".into()));
+        for (name, mark, point) in [("max", "▲", surface.high), ("min", "▼", surface.low)] {
+            let Some((pos, real)) = point else { continue };
+            let text = format!("{name} z = {}", short(real[2]));
+            let (x, y) = plot::project(pos, view);
+            let col = ((x + xs) / (2.0 * xs) * area.width as f64) as u16;
+            let row = ((ys - y) / (2.0 * ys) * area.height as f64) as u16;
+            if col < area.width && row < area.height {
+                let r = Rect::new(area.x + col, area.y + row, area.width - col, 1);
+                f.render_widget(Line::from(format!("{mark} {text}")).white().bold(), r);
+            }
+            app.report.push((Color::Gray, format!(" {text}")));
+            app.report.push((
+                Color::Gray,
+                format!("   at ({}, {})", short(real[0]), short(real[1])),
+            ));
+        }
+        app.report
+            .push((Color::Gray, format!(" mean z = {}", short(surface.mean))));
     }
     let (c, d) = s.y.unwrap_or(s.x);
     let info = format!(
