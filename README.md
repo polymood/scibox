@@ -6,43 +6,13 @@ scibox is a toolbox for engineers and scientists in the terminal.
 It contains a unit converter, an engineering formula solver, a graph plotter, and a scientific calculator.
 You can use the keyboard or the mouse.
 
-```text
- scibox   Common   Engineering   Science   Computing   Formulas   Graph   Calc         ⌕ Ctrl+P
-┌ Domain ─────┐┌ Formula ─────────────────────────┐┌Link budget (Friis)───────── Decibels & RF ┐
-│Decibels & RF││Amplitude ratio from dB           ││ Pr = Pt + Gt + Gr − 20·log10(4π·d·f / c)  │
-│Electronics  ││Power gain                        │└───────────────────────────────────────────┘
-│Mechanics    ││Voltage gain                      │┌ Variables ────────────────────────────────┐
-│Structures   ││dBm to watt                       ││◉ Pr -76.0520080561   dBm  Received power  │
-│Thermal      ││dBW to watt                       ││○ Pt 20█              dBm  Transmitted powe│
-│Fluids       ││dBµV to volt                      ││○ Gt 2                dBi  Transmit antenna│
-│Physics      ││dBm to dBµV                       ││○ Gr 2                dBi  Receive antenna │
-│             ││Sum of two levels                 ││○ d  1000             m    Distance        │
-│             ││Sound pressure level              ││○ f  2400000000       Hz   Frequency       │
-│             ││Wavelength                        ││                                           │
-│             ││Free-space path loss              ││                                           │
-│             ││Link budget (Friis)               ││                                           │
-└─────────────┘└──────────────────────────────────┘└ Enter or click ○: solve for this variable ┘
-```
+![Formulas tab: link budget solved for the received power](assets/screenshots/formulas.png)
 
-```text
- scibox   Common   Engineering   Science   Computing   Formulas   Graph   Calc         ⌕ Ctrl+P
-┌ f(x) =  (separate functions with ;) ─────────────────────────────┐┌ x min ─────┐┌ x max ─────┐
-│sin(x); x^2 / 10█                                                 ││-10         ││10          │
-└──────────────────────────────────────────────────────────────────┘└────────────┘└────────────┘
-┌ Graph (angles in radians) ───────────────────────────────────────────────────────────────────┐
-│10.332│⠢⢄⡀                                        ⢸                                        ⢀⡠⠔│
-│      │  ⠘⠢⢄⡀                                     ⢸                                     ⢀⡠⠔⠃  │
-│      │     ⠈⠑⠦⣀                                  ⢸                                  ⣀⠴⠊⠁     │
-│      │         ⠉⠒⢤⡀                              ⢸                              ⢀⡤⠒⠉         │
-│4.397 │            ⠈⠑⠒⠤⣀                          ⢸                          ⣀⠤⠒⠊⠁            │
-│      │                 ⠉⠑⠒⠤⣀⡀                    ⢸                    ⢀⣀⠤⠒⠊⠉                 │
-│      │                      ⠈⠉⠒⠢⠤⢄⣀⣀             ⢸             ⣀⣀⡠⠤⠔⠒⠉⠁                      │
-│      │⠒⠢⢤⣀⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⡤⠔⠒⠊⠉⠉⠉⠉⠉⠉⠑⠒⠢⠈⠉⠉⠑⠒⠒⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠔⠒⠒⠊⠉⠉⠁⡀⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⣠⠤⠒⠒⠉⠉⠉⠉⠉⠉⠉⠒⠒⠤⣄⡀⠤│
-│-1.538│    ⠉⠉⠒⠒⠒⠒⠒⠒⠒⠉⠉                ⠈⠉⠑⠒⠒⠒⠒⠒⠒⠉⠉ ⢸              ⠈⠉⠑⠒⠒⠒⠒⠒⠒⠊⠉                ⠈⠉│
-│      └───────────────────────────────────────────────────────────────────────────────────────│
-│    -10                                           0                                         10│
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
-```
+| Converter | Graph |
+| --- | --- |
+| ![Converter tab: 20 dBm in all the power units](assets/screenshots/converter.png) | ![Graph tab: three functions of x](assets/screenshots/graph.png) |
+| **Calculator** | **Go to (Ctrl+P)** |
+| ![Calculator tab with history and keypad](assets/screenshots/calc.png) | ![Go to window: search for "db"](assets/screenshots/palette.png) |
 
 ## Features
 
