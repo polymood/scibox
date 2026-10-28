@@ -4,6 +4,7 @@
 
 mod graph;
 mod look;
+mod math;
 
 use eframe::egui::{
     self, Align, Color32, Key, Layout, Modifiers, RichText, ScrollArea, TextEdit, Ui,
@@ -56,6 +57,8 @@ pub struct App {
     pub fresh: bool,
     /// Scroll the lists to the selected items at the next frame.
     scroll: bool,
+    /// The typeset equation of the formula.
+    equation: math::Cache,
 }
 
 impl App {
@@ -92,6 +95,7 @@ impl App {
             var: 1,
             fresh: false,
             scroll: false,
+            equation: math::Cache::default(),
         };
         // Options for the screenshots of the README: go to an entry, set the graph, type in the calculator.
         if let Ok(query) = std::env::var("SCIBOX_GOTO")
@@ -401,7 +405,7 @@ impl App {
                                 } else {
                                     text
                                 };
-                                let resp = ui.selectable_label(selected, text);
+                                let resp = look::item_rich(ui, selected, text);
                                 if self.scroll && selected {
                                     resp.scroll_to_me(None);
                                 }
@@ -461,7 +465,14 @@ impl App {
                 let fm = self.fm();
                 boxed(ui, fm.name, false, false, |ui| {
                     ui.set_min_width(ui.available_width());
-                    ui.label(RichText::new(fm.equation).size(20.0).color(ACCENT).strong());
+                    ui.add_space(6.0);
+                    let typeset = scibox_core::latex::to_latex(fm.equation)
+                        .is_ok_and(|tex| self.equation.show(ui, &tex, 26, ACCENT));
+                    if !typeset {
+                        ui.label(RichText::new(fm.equation).size(20.0).color(ACCENT).strong());
+                    }
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(fm.equation).color(GRAY));
                 });
                 let solved = self.form.solve(fm, &self.ctx);
                 if let Ok(v) = &solved {

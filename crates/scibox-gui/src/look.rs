@@ -40,7 +40,8 @@ pub fn style(ctx: &egui::Context) {
         v.window_shadow = Shadow::NONE;
         v.popup_shadow = Shadow::NONE;
         v.window_stroke = Stroke::new(1.0, ACCENT);
-        v.selection.bg_fill = ACCENT;
+        // The selected text in a text field: a dark accent color, so that the text stays readable.
+        v.selection.bg_fill = Color32::from_rgb(0x1b, 0x5e, 0x68);
         v.selection.stroke = Stroke::new(1.0, ACCENT);
         v.override_text_color = Some(TEXT);
         let w = &mut v.widgets;
@@ -115,13 +116,17 @@ pub fn boxed<R>(
 
 /// A list item. A selected item has black text on the accent color, as in the TUI.
 pub fn item(ui: &mut Ui, selected: bool, text: impl Into<String>) -> Response {
-    let text = RichText::new(text.into());
-    let text = if selected {
-        text.color(Color32::BLACK).strong()
+    item_rich(ui, selected, RichText::new(text.into()))
+}
+
+/// A list item with a formatted text.
+pub fn item_rich(ui: &mut Ui, selected: bool, text: RichText) -> Response {
+    if selected {
+        let text = text.color(Color32::BLACK).strong();
+        ui.add(egui::Button::new(text).fill(ACCENT).stroke(Stroke::NONE))
     } else {
-        text
-    };
-    ui.selectable_label(selected, text)
+        ui.selectable_label(false, text)
+    }
 }
 
 /// The text color of a calculator key.

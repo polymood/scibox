@@ -9,3 +9,4 @@ repository.workspace = true
 [dependencies]
 scibox-core = { path = "../scibox-core" }
 ratatui = "0.30.2"
+term-maths = "1.0.0"

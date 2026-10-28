@@ -8,4 +8,6 @@ repository.workspace = true
 
 [dependencies]
 eframe = "0.37.0"
+latex-rust = { version = "2.1.1", default-features = false, features = ["std", "png"] }
 scibox-core = { path = "../scibox-core" }
+tiny-skia = "0.11"

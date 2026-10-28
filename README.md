@@ -111,6 +111,10 @@ To copy a result, click it. To use a result as the new input, right-click it, or
 
 ### Formulas tab
 
+The formula box shows the equation in mathematical notation (fractions, roots, exponents, subscripts).
+scibox converts the equation to LaTeX. scibox-gui typesets it with the STIX Two Math font (latex-rust).
+scibox-tui draws it with Unicode characters (term-maths).
+
 The green radio button (◉) shows the variable that scibox calculates.
 
 1. Select a domain and a formula.

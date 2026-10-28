@@ -207,8 +207,19 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Min(40),
     ])
     .areas(area);
+    // The equation in 2D (fractions, roots, exponents), typeset from its LaTeX form.
+    let fm = app.formula();
+    let math: Vec<String> = match scibox_core::latex::to_latex(fm.equation) {
+        Ok(tex) => term_maths::render(&tex)
+            .to_string()
+            .lines()
+            .map(str::to_string)
+            .collect(),
+        Err(_) => vec![fm.equation.to_string()],
+    };
+    let eq_height = (math.len() as u16 + 3).min(right.height / 2).max(3);
     let [eq_area, vars_area] =
-        Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(right);
+        Layout::vertical([Constraint::Length(eq_height), Constraint::Fill(1)]).areas(right);
 
     let doms = DOMAINS.iter().map(|d| ListItem::new(d.name));
     list_pane(
@@ -232,11 +243,14 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
         names.collect(),
     );
 
-    let fm = app.formula();
     let eq_block = block(fm.name, false)
-        .title(Line::from(format!(" {} ", DOMAINS[app.sel(0)].name)).right_aligned());
-    let eq = Line::from(format!(" {}", fm.equation)).fg(ACCENT).bold();
-    f.render_widget(Paragraph::new(eq).block(eq_block), eq_area);
+        .title(Line::from(format!(" {} ", DOMAINS[app.sel(0)].name)).right_aligned())
+        .title_bottom(Line::from(format!(" {} ", fm.equation)).dark_gray());
+    let lines: Vec<Line> = math
+        .into_iter()
+        .map(|l| Line::from(format!(" {l}")).fg(ACCENT).bold())
+        .collect();
+    f.render_widget(Paragraph::new(lines).block(eq_block), eq_area);
 
     // Variables: one row each. The radio button marks the unknown.
     let solved = app.solve();

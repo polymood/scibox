@@ -3,6 +3,7 @@
 pub mod calc;
 #[rustfmt::skip]
 pub mod formulas;
+pub mod latex;
 pub mod plot;
 pub mod search;
 pub mod state;
