@@ -48,6 +48,35 @@ pub enum Expr {
     Bin(char, Box<Expr>, Box<Expr>),
     Factorial(Box<Expr>),
     Call(Func, Box<Expr>),
+    /// A function of two arguments, for example `nCr(5, 2)`.
+    Call2(fn(f64, f64) -> f64, Box<Expr>, Box<Expr>),
+}
+
+/// The physical constants (CODATA 2018, SI units): the name, the value, and a description.
+pub const CONSTANTS: [(&str, f64, &str); 14] = [
+    ("c", 299_792_458.0, "speed of light (m/s)"),
+    ("g0", 9.806_65, "standard gravity (m/s²)"),
+    ("h", 6.626_070_15e-34, "Planck constant (J·s)"),
+    ("hbar", 1.054_571_817e-34, "reduced Planck constant (J·s)"),
+    ("kB", 1.380_649e-23, "Boltzmann constant (J/K)"),
+    ("NA", 6.022_140_76e23, "Avogadro constant (1/mol)"),
+    ("R", 8.314_462_618, "molar gas constant (J/(mol·K))"),
+    ("qe", 1.602_176_634e-19, "elementary charge (C)"),
+    ("me", 9.109_383_701_5e-31, "electron mass (kg)"),
+    ("mp", 1.672_621_923_69e-27, "proton mass (kg)"),
+    ("G", 6.674_30e-11, "gravitational constant (m³/(kg·s²))"),
+    ("eps0", 8.854_187_812_8e-12, "vacuum permittivity (F/m)"),
+    ("mu0", 1.256_637_062_12e-6, "vacuum permeability (H/m)"),
+    (
+        "sigma",
+        5.670_374_419e-8,
+        "Stefan-Boltzmann constant (W/(m²·K⁴))",
+    ),
+];
+
+/// True if `name` is a function (of one or two arguments).
+pub fn is_function(name: &str) -> bool {
+    func(name).is_ok() || func2(name).is_some()
 }
 
 pub enum Func {
@@ -87,6 +116,7 @@ impl Expr {
                     Func::AngleOut(g) => g(x),
                 }
             }
+            Expr::Call2(g, a, b) => g(a.eval(ctx)?, b.eval(ctx)?),
         })
     }
 }
@@ -224,10 +254,24 @@ impl Parser {
         let name: String = self.s[start..self.i].iter().collect();
         if self.eat('(') {
             let arg = self.expr()?;
+            let second = if self.eat(',') {
+                Some(self.expr()?)
+            } else {
+                None
+            };
             if !self.eat(')') {
                 return Err("missing ')'".into());
             }
-            return Ok(Expr::Call(func(&name)?, Box::new(arg)));
+            return match second {
+                None => Ok(Expr::Call(func(&name)?, Box::new(arg))),
+                Some(b) => {
+                    let g = func2(&name).ok_or(format!("'{name}' does not take two arguments"))?;
+                    Ok(Expr::Call2(g, Box::new(arg), Box::new(b)))
+                }
+            };
+        }
+        if let Some(&(_, v, _)) = CONSTANTS.iter().find(|c| c.0 == name) {
+            return Ok(Expr::Num(v));
         }
         Ok(match name.as_str() {
             "pi" | "π" => Expr::Num(std::f64::consts::PI),
@@ -263,8 +307,52 @@ fn func(name: &str) -> Result<Func, String> {
         "floor" => Func::Plain(f64::floor),
         "ceil" => Func::Plain(f64::ceil),
         "round" => Func::Plain(f64::round),
+        "asinh" => Func::Plain(f64::asinh),
+        "acosh" => Func::Plain(f64::acosh),
+        "atanh" => Func::Plain(f64::atanh),
         _ => return Err(format!("unknown function '{name}'")),
     })
+}
+
+/// The functions of two arguments.
+fn func2(name: &str) -> Option<fn(f64, f64) -> f64> {
+    Some(match name {
+        "nCr" => |n, r| permutations(n, r) / (1..=r as u64).map(|k| k as f64).product::<f64>(),
+        "nPr" => permutations,
+        "gcd" => gcd,
+        "lcm" => |a, b| (a * b).abs() / gcd(a, b),
+        "min" => f64::min,
+        "max" => f64::max,
+        "hypot" => f64::hypot,
+        "root" => |x, n| {
+            if x < 0.0 && n % 2.0 == 1.0 {
+                -(-x).powf(1.0 / n)
+            } else {
+                x.powf(1.0 / n)
+            }
+        },
+        _ => return None,
+    })
+}
+
+/// n! / (n - r)! for integers 0 <= r <= n. Other values give NaN.
+fn permutations(n: f64, r: f64) -> f64 {
+    if n.fract() != 0.0 || r.fract() != 0.0 || r < 0.0 || r > n {
+        return f64::NAN;
+    }
+    ((n - r) as u64 + 1..=n as u64).map(|k| k as f64).product()
+}
+
+/// The greatest common divisor of two integers. Other values give NaN.
+fn gcd(a: f64, b: f64) -> f64 {
+    if a.fract() != 0.0 || b.fract() != 0.0 {
+        return f64::NAN;
+    }
+    let (mut a, mut b) = (a.abs() as u64, b.abs() as u64);
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a as f64
 }
 
 fn factorial(n: f64) -> Result<f64, String> {
@@ -325,6 +413,13 @@ mod tests {
         assert_eq!(ev("5!"), 120.0);
         assert_eq!(ev("ans * 2"), 14.0);
         assert_eq!(ev("2x^2"), 18.0);
+        assert_eq!(ev("nCr(5, 2)"), 10.0);
+        assert_eq!(ev("nPr(5, 2)"), 20.0);
+        assert_eq!(ev("gcd(12, 18) + lcm(4, 6)"), 18.0);
+        assert_eq!(ev("root(-8, 3)"), -2.0);
+        assert_eq!(ev("max(2, 3) * min(2, 3)"), 6.0);
+        assert_eq!(ev("2c"), 599_584_916.0);
+        assert!(ev("nCr(5, 2.5)").is_nan());
         assert_eq!(ev("2e"), 2.0 * std::f64::consts::E);
         assert_eq!(ev("3(1 + 1)"), 6.0);
         assert_eq!(ev("2pi^2"), 2.0 * std::f64::consts::PI.powi(2));

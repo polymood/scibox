@@ -163,16 +163,24 @@ If you see empty boxes, press F2 to select a different style.
 
 ### Calculator tab
 
+The keypad has 64 keys of a fixed size: digits, operators, functions, and physical constants.
+In a big window, the keys keep their size and the history gets the space.
+You can also type all the functions and the constants.
+
 | Item | Syntax |
 | --- | --- |
-| Operators | `+ - * / % ^ !` and parentheses |
-| Implicit multiplication | `2pi`, `3(1+2)` |
+| Operators | `+ - * / % ^ !` and parentheses (`%` is the remainder) |
+| Implicit multiplication | `2pi`, `3(1+2)`, `2kB` |
+| Exponent of 10 | `1.5E3` (the EE key) |
+| Functions | `sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh sqrt cbrt ln log log2 exp abs floor ceil round` |
+| Functions of two values | `nCr(n, r)`, `nPr(n, r)`, `gcd(a, b)`, `lcm(a, b)`, `min(a, b)`, `max(a, b)`, `hypot(a, b)`, `root(x, n)` |
 | Constants | `pi`, `e`, `tau`, `ans` (the last result) |
-| Functions | `sin cos tan asin acos atan sinh cosh tanh sqrt cbrt ln log log2 exp abs floor ceil round` |
+| Physical constants (SI) | `c g0 h hbar kB NA R qe me mp G eps0 mu0 sigma` |
 
 The DEG key sets the angle unit to degrees or radians.
 After a result, type a number to start a new calculation.
 Type an operator to continue the calculation with the result.
+The "Constants" list under the keypad gives the name and the unit of each physical constant.
 
 ### Clipboard
 

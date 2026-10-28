@@ -282,7 +282,7 @@ impl App {
                 Kind::Calc => self.calc.evaluate(&mut self.ctx),
                 _ => {}
             },
-            KeyCode::Backspace => self.press("⌫"),
+            KeyCode::Backspace => self.press("DEL"),
             KeyCode::Delete => self.press("C"),
             KeyCode::Char(c) if !ctrl && kind == Kind::Calc => self.calc.type_text(&c.to_string()),
             KeyCode::Char(c) if !ctrl => {
@@ -339,7 +339,7 @@ impl App {
         }
     }
 
-    /// Clear (`C`) or delete the last character (`⌫`) of the input. In the calculator, do the action of any key.
+    /// Clear (`C`) or delete the last character (`DEL`) of the input. In the calculator, do the action of any key.
     fn press(&mut self, key: &str) {
         if self.kind() == Kind::Calc {
             return self.calc.press(key, &mut self.ctx);

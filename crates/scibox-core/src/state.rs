@@ -4,15 +4,64 @@ use crate::calc::{self, Ctx};
 use crate::formulas::{self, Formula};
 use crate::units::{self, Category, Conv};
 
-/// The calculator keypad, row by row (6 x 6).
-pub const KEYS: [&str; 36] = [
-    "7", "8", "9", "/", "(", ")", //
-    "4", "5", "6", "*", "^", "√", //
-    "1", "2", "3", "-", "π", "e", //
-    "0", ".", "ans", "+", "C", "⌫", //
-    "sin", "cos", "tan", "ln", "log", "=", //
-    "asin", "acos", "atan", "exp", "x²", "DEG", //
+/// The calculator keypad, row by row (8 x 8).
+pub const KEYS: [&str; 64] = [
+    "7", "8", "9", "÷", "(", ")", "C", "DEL", //
+    "4", "5", "6", "×", "x²", "xʸ", "√", "∛", //
+    "1", "2", "3", "−", "1/x", "x!", "mod", "abs", //
+    "0", ".", "EE", "+", ",", "ans", "π", "=", //
+    "sin", "cos", "tan", "ln", "log", "log2", "exp", "e", //
+    "asin", "acos", "atan", "sinh", "cosh", "tanh", "floor", "ceil", //
+    "asinh", "acosh", "atanh", "nCr", "nPr", "gcd", "lcm", "DEG", //
+    "c", "g0", "h", "kB", "NA", "qe", "me", "round", //
 ];
+pub const KEY_COLUMNS: usize = 8;
+
+/// The kind of a key. The applications give each kind a color.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum KeyKind {
+    Digit,
+    Operator,
+    Function,
+    Constant,
+    /// C and DEL.
+    Clear,
+    Equals,
+}
+
+pub fn key_kind(key: &str) -> KeyKind {
+    match key {
+        "C" | "DEL" => KeyKind::Clear,
+        "=" => KeyKind::Equals,
+        "π" | "e" | "ans" => KeyKind::Constant,
+        k if calc::CONSTANTS.iter().any(|c| c.0 == k) => KeyKind::Constant,
+        k if k.chars().all(|c| c.is_ascii_digit() || c == '.') => KeyKind::Digit,
+        k if calc::is_function(k) || k == "DEG" => KeyKind::Function,
+        _ => KeyKind::Operator,
+    }
+}
+
+/// A short help text for a key, or `None`.
+pub fn key_help(key: &str) -> Option<String> {
+    if let Some(c) = calc::CONSTANTS.iter().find(|c| c.0 == key) {
+        return Some(format!("{}: {} = {}", c.0, c.2, calc::fmt(c.1)));
+    }
+    Some(
+        match key {
+            "nCr" => "combinations: nCr(n, r)",
+            "nPr" => "permutations: nPr(n, r)",
+            "gcd" => "greatest common divisor: gcd(a, b)",
+            "lcm" => "least common multiple: lcm(a, b)",
+            "EE" => "exponent of 10: 1.5EE3 = 1500",
+            "mod" => "remainder of a division: 7 mod 3 = 1",
+            "1/x" => "the inverse of the input",
+            "ans" => "the last result",
+            "DEG" => "the angle unit: degrees or radians",
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
 
 /// The converter results: the input value in each unit of the category. An empty input is 1.
 pub fn convert_all(
@@ -116,25 +165,39 @@ impl Calculator {
     pub fn press(&mut self, key: &str, ctx: &mut Ctx) {
         match key {
             "C" => self.input.clear(),
-            "⌫" => {
+            "DEL" => {
                 self.input.pop();
             }
             "=" => self.evaluate(ctx),
             "DEG" => ctx.deg = !ctx.deg,
+            "1/x" => {
+                self.input = if self.input.is_empty() {
+                    "1/(".into()
+                } else {
+                    format!("1/({})", self.input)
+                };
+                self.fresh = false;
+            }
+            "÷" => self.type_text("/"),
+            "×" => self.type_text("*"),
+            "−" => self.type_text("-"),
             "x²" => self.type_text("^2"),
+            "xʸ" => self.type_text("^"),
+            "x!" => self.type_text("!"),
+            "mod" => self.type_text("%"),
+            "EE" => self.type_text("E"),
             "√" => self.type_text("sqrt("),
+            "∛" => self.type_text("cbrt("),
             "π" => self.type_text("pi"),
             // A function name gets an opening parenthesis.
-            f if f.len() > 1 && f != "ans" && f.chars().all(char::is_alphabetic) => {
-                self.type_text(&format!("{f}("))
-            }
+            f if calc::is_function(f) => self.type_text(&format!("{f}(")),
             s => self.type_text(s),
         }
     }
 
     /// Add text to the input.
     pub fn type_text(&mut self, s: &str) {
-        if self.fresh && !s.starts_with(['+', '-', '*', '/', '^', '%', '!']) {
+        if self.fresh && !s.starts_with(['+', '-', '*', '/', '^', '%', '!', 'E']) {
             self.input.clear();
         }
         self.fresh = false;
@@ -178,6 +241,21 @@ mod tests {
         assert_eq!(c.input, "10");
         c.type_text("7");
         assert_eq!(c.input, "7");
+    }
+
+    #[test]
+    fn keypad() {
+        let mut ctx = Ctx::default();
+        let mut c = Calculator::default();
+        for key in ["nCr", "5", ",", "2", ")", "×", "3", "="] {
+            c.press(key, &mut ctx);
+        }
+        assert_eq!(c.input, "30");
+        c.press("1/x", &mut ctx);
+        assert_eq!(c.input, "1/(30)");
+        assert!(KEYS.iter().all(|k| key_kind(k) != KeyKind::Operator || "÷×−+(),.EExʸx²x!mod1/x√∛".contains(k)));
+        assert_eq!(key_kind("kB"), KeyKind::Constant);
+        assert_eq!(key_kind("asinh"), KeyKind::Function);
     }
 
     #[test]

@@ -1,11 +1,12 @@
 use crate::{App, KEYS, Kind};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
-use scibox_core::calc::{self, fmt};
+use scibox_core::calc::{self, CONSTANTS, fmt};
 use scibox_core::formulas::DOMAINS;
+use scibox_core::state::{KEY_COLUMNS, KeyKind, key_kind};
 use scibox_core::units::GROUPS;
 
 pub const ACCENT: Color = Color::Cyan;
@@ -280,11 +281,26 @@ fn draw_formulas(f: &mut Frame, app: &mut App, area: Rect) {
     list_pane(f, app, 2, vars_area, vars_block, items.collect());
 }
 
+/// The width of a calculator key, in cells.
+const KEY_W: u16 = 7;
+
 fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
     let [input_area, rest] =
         Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
-    let [history_area, keys_area] =
-        Layout::horizontal([Constraint::Percentage(40), Constraint::Fill(1)]).areas(rest);
+    // The keypad has a fixed size: 8 keys and 7 gaps in each row, and the borders.
+    let cols = KEY_COLUMNS as u16;
+    let rows = (KEYS.len() / KEY_COLUMNS) as u16;
+    let [history_area, side] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(cols * (KEY_W + 1) + 1),
+    ])
+    .areas(rest);
+    let gap = u16::from(side.height > rows * 2);
+    let [keys_area, constants_area] = Layout::vertical([
+        Constraint::Length(rows * (1 + gap) - gap + 2),
+        Constraint::Fill(1),
+    ])
+    .areas(side);
 
     // Expression input
     let mode = if app.ctx.deg { " DEG " } else { " RAD " };
@@ -316,44 +332,55 @@ fn draw_calc(f: &mut Frame, app: &mut App, area: Rect) {
         history_area,
     );
 
-    // Keypad: a 6 x 6 grid of buttons
-    let inner = block(" Keys ", false).inner(keys_area);
-    f.render_widget(block(" Keys ", false), keys_area);
+    // Keypad: keys of one line, with a background color.
+    let b = block(" Keys ", false);
+    let inner = b.inner(keys_area);
+    f.render_widget(b, keys_area);
     app.areas.keys.clear();
-    for row in Layout::vertical([Constraint::Fill(1); 6])
-        .split(inner)
-        .iter()
-    {
-        for cell in Layout::horizontal([Constraint::Fill(1); 6])
-            .split(*row)
-            .iter()
-        {
-            app.areas.keys.push(*cell);
-        }
-    }
-    for (i, (cell, key)) in app.areas.keys.iter().zip(KEYS).enumerate() {
-        let label = if key == "DEG" { mode.trim() } else { key };
-        let color = match key {
-            "=" => Color::Green,
-            "C" | "⌫" => Color::Red,
-            k if k.len() > 1 || "/*-+^()√π".contains(k) => ACCENT,
-            _ => Color::White,
+    for (i, key) in KEYS.iter().enumerate() {
+        let (col, row) = ((i % KEY_COLUMNS) as u16, (i / KEY_COLUMNS) as u16);
+        let r = Rect::new(
+            inner.x + col * (KEY_W + 1),
+            inner.y + row * (1 + gap),
+            KEY_W,
+            1,
+        )
+        .intersection(inner);
+        app.areas.keys.push(r);
+        let label = if *key == "DEG" { mode.trim() } else { key };
+        let color = match key_kind(key) {
+            KeyKind::Digit => Color::White,
+            KeyKind::Operator => Color::Yellow,
+            KeyKind::Function => ACCENT,
+            KeyKind::Constant => Color::Magenta,
+            KeyKind::Clear => Color::Red,
+            KeyKind::Equals => Color::Green,
         };
-        let mut style = Style::new().fg(color).bold();
-        if app.pressed == Some(i) {
-            style = style.reversed();
-        }
-        let key_block = Block::bordered().border_style(Style::new().fg(Color::DarkGray));
-        // Center the label vertically inside the button.
-        let pad = cell.height.saturating_sub(3) / 2;
-        let mut text = vec![Line::default(); pad as usize];
-        text.push(Line::from(label));
-        let button = Paragraph::new(text)
-            .alignment(Alignment::Center)
-            .style(style)
-            .block(key_block);
-        f.render_widget(button, *cell);
+        let style = if app.pressed == Some(i) {
+            Style::new().fg(Color::Black).bg(ACCENT)
+        } else {
+            Style::new().fg(color).bg(Color::Indexed(236))
+        };
+        f.render_widget(
+            Line::from(format!("{label:^w$}", w = KEY_W as usize)).style(style.bold()),
+            r,
+        );
     }
+
+    // The physical constants that the expressions can use.
+    let lines: Vec<Line> = CONSTANTS
+        .iter()
+        .map(|(name, _, text)| {
+            Line::from(vec![
+                Span::from(format!(" {name:<6}")).magenta(),
+                Span::from(*text).dark_gray(),
+            ])
+        })
+        .collect();
+    f.render_widget(
+        Paragraph::new(lines).block(block(" Constants ", false)),
+        constants_area,
+    );
 }
 
 fn draw_palette(f: &mut Frame, app: &mut App) {

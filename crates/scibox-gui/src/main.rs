@@ -1,24 +1,26 @@
 //! scibox-gui: the egui version of scibox. All the logic is in `scibox-core`. This crate only shows it.
 
 mod graph;
+mod look;
 
 use eframe::egui::{
-    self, Align, Button, Color32, Key, Layout, Modifiers, RichText, ScrollArea, TextEdit, Ui,
+    self, Align, Color32, Key, Layout, Modifiers, RichText, ScrollArea, TextEdit, Ui,
 };
-use scibox_core::calc::{self, Ctx};
+use look::{ACCENT, GRAY, GREEN, MAGENTA, RED, boxed, item};
+use scibox_core::calc::{self, CONSTANTS, Ctx};
 use scibox_core::formulas::{DOMAINS, Formula};
 use scibox_core::search::{self, Entry, Target};
-use scibox_core::state::{self, Calculator, FormulaInputs, KEYS};
+use scibox_core::state::{self, Calculator, FormulaInputs, KEY_COLUMNS, KEYS, key_help, key_kind};
 use scibox_core::units::{Category, GROUPS};
-
-pub const ACCENT: Color32 = Color32::from_rgb(0x2e, 0xc4, 0xd6);
-const GREEN: Color32 = Color32::from_rgb(0x98, 0xc3, 0x79);
-const RED: Color32 = Color32::from_rgb(0xe0, 0x6c, 0x75);
 
 // The tabs after the converter tabs (one tab for each group in `GROUPS`).
 const FORMULAS_TAB: usize = GROUPS.len();
 const GRAPH_TAB: usize = GROUPS.len() + 1;
 const CALC_TAB: usize = GROUPS.len() + 2;
+
+/// The size of a calculator key in points. The keys keep this size in a big window.
+const KEY_SIZE: egui::Vec2 = egui::vec2(66.0, 30.0);
+const KEY_GAP: f32 = 6.0;
 
 pub struct App {
     tab: usize,
@@ -49,7 +51,7 @@ pub struct App {
 
 impl App {
     fn new(cc: &eframe::CreationContext) -> Self {
-        style(&cc.egui_ctx);
+        look::style(&cc.egui_ctx);
         let mut app = App {
             tab: 0,
             cat: 0,
@@ -78,7 +80,7 @@ impl App {
             status: None,
             focus_input: true,
         };
-        // Options for the screenshots of the README: go to an entry, set the graph input.
+        // Options for the screenshots of the README: go to an entry, set the graph, type in the calculator.
         if let Ok(query) = std::env::var("SCIBOX_GOTO")
             && let Some(&e) = search::find(&app.entries, &query).first()
         {
@@ -90,6 +92,12 @@ impl App {
         if let Ok(g) = std::env::var("SCIBOX_GRAPH") {
             for (i, part) in g.split('|').enumerate().take(9) {
                 app.graph[i] = part.into();
+            }
+        }
+        if let Ok(exprs) = std::env::var("SCIBOX_CALC") {
+            for e in exprs.split('|') {
+                app.calc.input = e.into();
+                app.calc.evaluate(&mut app.ctx);
             }
         }
         app
@@ -154,12 +162,12 @@ impl App {
                 .map(|g| g.name)
                 .chain(["Formulas", "Graph", "Calc"]);
             for (i, name) in names.enumerate() {
-                if ui.selectable_label(self.tab == i, name).clicked() {
+                if item(ui, self.tab == i, format!(" {name} ")).clicked() {
                     self.set_tab(i);
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("⌕ Go to (Ctrl+P)").clicked() {
+                if ui.button("⌕ Ctrl+P").clicked() {
                     self.palette = Some((String::new(), 0));
                 }
             });
@@ -169,34 +177,43 @@ impl App {
     fn converter(&mut self, ui: &mut Ui) {
         let cat = self.category();
         let results = state::convert_all(cat, self.from, &self.input, &self.ctx);
-        egui::Panel::top("value").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label("Value");
-                let unit = &cat.units[self.from];
-                let r = ui.add(
-                    TextEdit::singleline(&mut self.input)
-                        .hint_text("1")
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(320.0),
-                );
-                if std::mem::take(&mut self.focus_input) {
-                    r.request_focus();
-                }
-                ui.label(RichText::new(format!("{} ({})", unit.name, unit.symbol)).color(ACCENT));
-                if let Err(e) = &results {
-                    ui.label(RichText::new(e).color(RED));
-                }
-            });
-            ui.add_space(4.0);
-        });
-        egui::Panel::left("categories")
-            .default_size(170.0)
+        let unit = &cat.units[self.from];
+        egui::Panel::top("value")
+            .show_separator_line(false)
+            .frame(look::panel())
             .show(ui, |ui| {
-                ui.heading("Category");
-                ScrollArea::vertical().show(ui, |ui| {
+                boxed(ui, "Value", true, false, |ui| {
+                    ui.horizontal(|ui| {
+                        let width = ui.available_width() - 300.0;
+                        let r = ui.add(
+                            TextEdit::singleline(&mut self.input)
+                                .hint_text("1")
+                                .frame(egui::Frame::new())
+                                .desired_width(width),
+                        );
+                        if std::mem::take(&mut self.focus_input) {
+                            r.request_focus();
+                        }
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(format!("{} ({})", unit.name, unit.symbol))
+                                    .color(ACCENT),
+                            );
+                        });
+                    });
+                    if let Err(e) = &results {
+                        ui.label(RichText::new(e).color(RED));
+                    }
+                });
+            });
+        egui::Panel::left("categories")
+            .exact_size(200.0)
+            .show_separator_line(false)
+            .frame(look::panel())
+            .show(ui, |ui| {
+                boxed(ui, "Category", false, true, |ui| {
                     for (i, c) in GROUPS[self.tab].categories.iter().enumerate() {
-                        if ui.selectable_label(self.cat == i, c.name).clicked() {
+                        if item(ui, self.cat == i, c.name).clicked() {
                             self.cat = i;
                             self.from = 0;
                         }
@@ -204,220 +221,267 @@ impl App {
                 });
             });
         egui::Panel::left("units")
-            .default_size(230.0)
+            .exact_size(260.0)
+            .show_separator_line(false)
+            .frame(look::panel())
             .show(ui, |ui| {
-                ui.heading("From");
-                ScrollArea::vertical().show(ui, |ui| {
-                    for (i, u) in cat.units.iter().enumerate() {
-                        if ui.selectable_label(self.from == i, u.name).clicked() {
-                            self.from = i;
+                boxed(ui, "From", true, true, |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        for (i, u) in cat.units.iter().enumerate() {
+                            if item(ui, self.from == i, u.name).clicked() {
+                                self.from = i;
+                            }
                         }
-                    }
+                    });
                 });
             });
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.heading("Result");
-            ui.label(RichText::new("Click: copy · right-click: use as input").weak());
-            let results = results.unwrap_or_default();
-            let width = results.iter().map(|r| r.chars().count()).max().unwrap_or(0);
-            ScrollArea::vertical().show(ui, |ui| {
-                for (i, (u, r)) in cat.units.iter().zip(&results).enumerate() {
-                    let text = RichText::new(format!("{r:>width$}  {:<8} {}", u.symbol, u.name))
-                        .monospace();
-                    let resp = ui.selectable_label(i == self.from, text);
-                    if resp.clicked() {
-                        self.copy(ui, r.clone());
-                    }
-                    if resp.secondary_clicked() {
-                        self.input = r.clone();
-                        self.from = i;
-                    }
-                }
+        egui::CentralPanel::default()
+            .frame(look::panel())
+            .show(ui, |ui| {
+                boxed(
+                    ui,
+                    "Result · click: copy · right-click: use",
+                    false,
+                    true,
+                    |ui| {
+                        let results = results.unwrap_or_default();
+                        let width = results.iter().map(|r| r.chars().count()).max().unwrap_or(0);
+                        ScrollArea::vertical().show(ui, |ui| {
+                            for (i, (u, r)) in cat.units.iter().zip(&results).enumerate() {
+                                let text = RichText::new(format!(
+                                    "{r:>width$} {:<8} {}",
+                                    u.symbol, u.name
+                                ));
+                                let resp = ui.selectable_label(
+                                    false,
+                                    if i == self.from {
+                                        text.color(look::YELLOW)
+                                    } else {
+                                        text
+                                    },
+                                );
+                                if resp.clicked() {
+                                    self.copy(ui, r.clone());
+                                }
+                                if resp.secondary_clicked() {
+                                    self.input = r.clone();
+                                    self.from = i;
+                                }
+                            }
+                        });
+                    },
+                );
             });
-        });
     }
 
     fn formulas(&mut self, ui: &mut Ui) {
         egui::Panel::left("domains")
-            .default_size(150.0)
+            .exact_size(170.0)
+            .show_separator_line(false)
+            .frame(look::panel())
             .show(ui, |ui| {
-                ui.heading("Domain");
-                for (i, d) in DOMAINS.iter().enumerate() {
-                    if ui.selectable_label(self.dom == i, d.name).clicked() {
-                        self.select_formula(i, 0);
+                boxed(ui, "Domain", false, true, |ui| {
+                    for (i, d) in DOMAINS.iter().enumerate() {
+                        if item(ui, self.dom == i, d.name).clicked() {
+                            self.select_formula(i, 0);
+                        }
                     }
-                }
+                });
             });
         egui::Panel::left("formulas")
-            .default_size(260.0)
+            .exact_size(330.0)
+            .show_separator_line(false)
+            .frame(look::panel())
             .show(ui, |ui| {
-                ui.heading("Formula");
-                ScrollArea::vertical().show(ui, |ui| {
-                    for (i, f) in DOMAINS[self.dom].formulas.iter().enumerate() {
-                        if ui.selectable_label(self.formula == i, f.name).clicked() {
-                            self.select_formula(self.dom, i);
+                boxed(ui, "Formula", false, true, |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        for (i, f) in DOMAINS[self.dom].formulas.iter().enumerate() {
+                            if item(ui, self.formula == i, f.name).clicked() {
+                                self.select_formula(self.dom, i);
+                            }
                         }
-                    }
+                    });
                 });
             });
-        egui::CentralPanel::default().show(ui, |ui| {
-            let fm = self.fm();
-            ui.heading(fm.name);
-            ui.label(
-                RichText::new(fm.equation)
-                    .size(22.0)
-                    .color(ACCENT)
-                    .monospace(),
-            );
-            ui.add_space(10.0);
-            let solved = self.form.solve(fm, &self.ctx);
-            if let Ok(v) = &solved {
-                self.form.text[self.form.unknown] = calc::fmt(*v);
-            }
-            egui::Grid::new("vars")
-                .num_columns(5)
-                .spacing([12.0, 8.0])
-                .show(ui, |ui| {
-                    for (i, var) in fm.vars.iter().enumerate() {
-                        let unknown = i == self.form.unknown;
-                        if ui
-                            .radio(unknown, "")
-                            .on_hover_text("Solve for this variable")
-                            .clicked()
-                        {
-                            self.form.set_unknown(fm, i, &self.ctx);
-                        }
-                        ui.label(RichText::new(var.symbol).strong().monospace());
-                        let ok = calc::eval(&self.form.text[i], &self.ctx).is_ok();
-                        let color = if unknown {
-                            GREEN
-                        } else if ok {
-                            ui.visuals().text_color()
-                        } else {
-                            RED
-                        };
-                        let before = self.form.text[i].clone();
-                        let r = ui.add_sized(
-                            [220.0, 26.0],
-                            TextEdit::singleline(&mut self.form.text[i])
-                                .text_color(color)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        if r.changed() {
-                            // An edit of the result row: the solver calculates an other variable.
-                            let typed = std::mem::replace(&mut self.form.text[i], before);
-                            self.form.edit(fm, i, &self.ctx);
-                            self.form.text[i] = typed;
-                        }
-                        ui.label(RichText::new(var.unit).color(ACCENT));
-                        ui.label(RichText::new(var.name).weak());
-                        ui.end_row();
-                    }
+        egui::CentralPanel::default()
+            .frame(look::panel())
+            .show(ui, |ui| {
+                let fm = self.fm();
+                boxed(ui, fm.name, false, false, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.label(RichText::new(fm.equation).size(20.0).color(ACCENT).strong());
                 });
-            ui.add_space(10.0);
-            match solved {
-                Ok(v) => {
-                    if ui
-                        .button(format!(
-                            "Copy {} = {}",
-                            fm.vars[self.form.unknown].symbol,
-                            calc::fmt(v)
-                        ))
-                        .clicked()
-                    {
-                        self.copy(ui, calc::fmt(v));
-                    }
+                let solved = self.form.solve(fm, &self.ctx);
+                if let Ok(v) = &solved {
+                    self.form.text[self.form.unknown] = calc::fmt(*v);
                 }
-                Err(e) => {
-                    ui.label(RichText::new(e).color(RED));
-                }
-            }
-            ui.label(
-                RichText::new("Click a radio button to solve for that variable. Type in any row.")
-                    .weak(),
-            );
-        });
+                boxed(
+                    ui,
+                    "Variables · ◉ = solve for this variable",
+                    true,
+                    true,
+                    |ui| {
+                        egui::Grid::new("vars")
+                            .num_columns(5)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                for (i, var) in fm.vars.iter().enumerate() {
+                                    let unknown = i == self.form.unknown;
+                                    let radio = RichText::new(if unknown { "◉" } else { "○" })
+                                        .color(if unknown { GREEN } else { GRAY });
+                                    if ui
+                                        .selectable_label(false, radio)
+                                        .on_hover_text("Solve for this variable")
+                                        .clicked()
+                                    {
+                                        self.form.set_unknown(fm, i, &self.ctx);
+                                    }
+                                    ui.label(RichText::new(var.symbol).strong());
+                                    let ok = calc::eval(&self.form.text[i], &self.ctx).is_ok();
+                                    let color = if unknown {
+                                        GREEN
+                                    } else if ok {
+                                        look::TEXT
+                                    } else {
+                                        RED
+                                    };
+                                    let before = self.form.text[i].clone();
+                                    let r = ui.add_sized(
+                                        [220.0, 22.0],
+                                        TextEdit::singleline(&mut self.form.text[i])
+                                            .text_color(color),
+                                    );
+                                    if r.changed() {
+                                        // An edit of the result row: the solver calculates an other variable.
+                                        let typed =
+                                            std::mem::replace(&mut self.form.text[i], before);
+                                        self.form.edit(fm, i, &self.ctx);
+                                        self.form.text[i] = typed;
+                                    }
+                                    ui.label(RichText::new(var.unit).color(ACCENT));
+                                    ui.label(RichText::new(var.name).color(GRAY));
+                                    ui.end_row();
+                                }
+                            });
+                        ui.add_space(8.0);
+                        match solved {
+                            Ok(v) => {
+                                let text = format!(
+                                    "Copy {} = {}",
+                                    fm.vars[self.form.unknown].symbol,
+                                    calc::fmt(v)
+                                );
+                                if ui.button(text).clicked() {
+                                    self.copy(ui, calc::fmt(v));
+                                }
+                            }
+                            Err(e) => {
+                                ui.label(RichText::new(e).color(RED));
+                            }
+                        }
+                    },
+                );
+            });
     }
 
     fn calculator(&mut self, ui: &mut Ui) {
-        egui::Panel::top("expression").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                let r = ui.add(
-                    TextEdit::singleline(&mut self.calc.input)
-                        .font(egui::FontId::monospace(22.0))
-                        .desired_width(ui.available_width() - 60.0),
-                );
-                if std::mem::take(&mut self.focus_input) {
-                    r.request_focus();
-                }
-                if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                    self.calc.evaluate(&mut self.ctx);
-                    r.request_focus();
-                }
-                ui.label(RichText::new(if self.ctx.deg { "DEG" } else { "RAD" }).color(ACCENT));
-            });
-            ui.add_space(4.0);
-        });
-        egui::Panel::left("history")
-            .exact_size(320.0)
+        let mode = if self.ctx.deg { "DEG" } else { "RAD" };
+        egui::Panel::top("expression")
+            .show_separator_line(false)
+            .frame(look::panel())
             .show(ui, |ui| {
-                ui.heading("History");
-                ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-                    let mut copy = None;
-                    for (expr, result) in &self.calc.history {
-                        ui.label(RichText::new(expr).weak().monospace());
-                        let color = if result.starts_with("Error") {
-                            RED
-                        } else {
-                            ui.visuals().strong_text_color()
-                        };
-                        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    RichText::new(format!("= {result}"))
-                                        .color(color)
-                                        .monospace(),
-                                )
-                                .clicked()
-                            {
-                                copy = Some(result.clone());
-                            }
-                        });
-                    }
-                    if let Some(t) = copy {
-                        self.copy(ui, t);
-                    }
+                boxed(ui, "Expression", true, false, |ui| {
+                    ui.horizontal(|ui| {
+                        let r = ui.add(
+                            TextEdit::singleline(&mut self.calc.input)
+                                .frame(egui::Frame::new())
+                                .font(egui::FontId::monospace(20.0))
+                                .desired_width(ui.available_width() - 50.0),
+                        );
+                        if std::mem::take(&mut self.focus_input) {
+                            r.request_focus();
+                        }
+                        if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                            self.calc.evaluate(&mut self.ctx);
+                            r.request_focus();
+                        }
+                        ui.label(RichText::new(mode).color(ACCENT));
+                    });
                 });
             });
-        egui::CentralPanel::default().show(ui, |ui| {
-            let gap = 6.0;
-            let size = ui.available_size();
-            let (w, h) = ((size.x - 5.0 * gap) / 6.0, (size.y - 5.0 * gap) / 6.0);
-            egui::Grid::new("keys").spacing([gap, gap]).show(ui, |ui| {
-                for (i, key) in KEYS.iter().enumerate() {
-                    let label = if *key == "DEG" {
-                        if self.ctx.deg { "DEG" } else { "RAD" }
-                    } else {
-                        key
-                    };
-                    let color = match *key {
-                        "=" => GREEN,
-                        "C" | "⌫" => RED,
-                        k if k.len() > 1 || "/*-+^()√π".contains(k) => ACCENT,
-                        _ => ui.visuals().strong_text_color(),
-                    };
-                    let b = Button::new(RichText::new(label).size(20.0).color(color));
-                    if ui.add_sized([w, h], b).clicked() {
-                        self.calc.press(key, &mut self.ctx);
-                    }
-                    if i % 6 == 5 {
-                        ui.end_row();
-                    }
-                }
+        // The keypad has a fixed size: it does not grow with the window.
+        let cols = KEY_COLUMNS as f32;
+        let keys_width = cols * KEY_SIZE.x + (cols - 1.0) * KEY_GAP + 22.0;
+        egui::Panel::right("keypad")
+            .exact_size(keys_width)
+            .show_separator_line(false)
+            .frame(look::panel())
+            .show(ui, |ui| {
+                boxed(ui, "Keys", false, false, |ui| {
+                    egui::Grid::new("keys")
+                        .spacing([KEY_GAP, KEY_GAP])
+                        .show(ui, |ui| {
+                            for (i, key) in KEYS.iter().enumerate() {
+                                let label = if *key == "DEG" { mode } else { key };
+                                let mut r =
+                                    look::key(ui, label, look::key_color(key_kind(key)), KEY_SIZE);
+                                if let Some(help) = key_help(key) {
+                                    r = r.on_hover_text(help);
+                                }
+                                if r.clicked() {
+                                    self.calc.press(key, &mut self.ctx);
+                                }
+                                if i % KEY_COLUMNS == KEY_COLUMNS - 1 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                });
+                boxed(ui, "Constants", false, true, |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        for (name, value, text) in CONSTANTS {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(format!("{name:<6}")).color(MAGENTA));
+                                ui.label(RichText::new(text).color(GRAY))
+                                    .on_hover_text(calc::fmt(value));
+                            });
+                        }
+                    });
+                });
             });
-        });
+        egui::CentralPanel::default()
+            .frame(look::panel())
+            .show(ui, |ui| {
+                boxed(
+                    ui,
+                    "History · click a result to copy it",
+                    false,
+                    true,
+                    |ui| {
+                        ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
+                            let mut copy = None;
+                            for (expr, result) in &self.calc.history {
+                                ui.label(RichText::new(expr).color(GRAY));
+                                let color = if result.starts_with("Error") {
+                                    RED
+                                } else {
+                                    Color32::WHITE
+                                };
+                                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                                    let text =
+                                        RichText::new(format!("= {result}")).color(color).strong();
+                                    if ui.selectable_label(false, text).clicked() {
+                                        copy = Some(result.clone());
+                                    }
+                                });
+                            }
+                            if let Some(t) = copy {
+                                self.copy(ui, t);
+                            }
+                        });
+                    },
+                );
+            });
     }
 
     fn palette_window(&mut self, ui: &mut Ui) {
@@ -426,44 +490,56 @@ impl App {
         };
         let matches = search::find(&self.entries, query);
         let mut jump = None;
-        let modal = egui::Modal::new(ui.scope_id().with("goto")).show(ui.ctx(), |ui| {
-            ui.set_width(640.0);
-            ui.heading("Go to");
-            let r = ui.add(
-                TextEdit::singleline(query)
-                    .hint_text("type a name: dbm, ohm law, length...")
-                    .desired_width(f32::INFINITY),
-            );
-            r.request_focus();
-            if r.changed() {
-                *selected = 0;
-            }
-            ui.input_mut(|i| {
-                if i.consume_key(Modifiers::NONE, Key::ArrowDown) {
-                    *selected = (*selected + 1).min(matches.len().saturating_sub(1));
-                }
-                if i.consume_key(Modifiers::NONE, Key::ArrowUp) {
-                    *selected = selected.saturating_sub(1);
-                }
-                if i.consume_key(Modifiers::NONE, Key::Enter) {
-                    jump = matches.get(*selected).copied();
-                }
+        let modal = egui::Modal::new(ui.scope_id().with("goto"))
+            .frame(egui::Frame::new().fill(look::BG))
+            .show(ui.ctx(), |ui| {
+                ui.set_width(720.0);
+                boxed(
+                    ui,
+                    &format!("Go to · {} results", matches.len()),
+                    true,
+                    false,
+                    |ui| {
+                        let r = ui.add(
+                            TextEdit::singleline(query)
+                                .hint_text("> type a name: dbm, ohm law, length...")
+                                .frame(egui::Frame::new())
+                                .desired_width(f32::INFINITY),
+                        );
+                        r.request_focus();
+                        if r.changed() {
+                            *selected = 0;
+                        }
+                        ui.input_mut(|i| {
+                            if i.consume_key(Modifiers::NONE, Key::ArrowDown) {
+                                *selected = (*selected + 1).min(matches.len().saturating_sub(1));
+                            }
+                            if i.consume_key(Modifiers::NONE, Key::ArrowUp) {
+                                *selected = selected.saturating_sub(1);
+                            }
+                            if i.consume_key(Modifiers::NONE, Key::Enter) {
+                                jump = matches.get(*selected).copied();
+                            }
+                        });
+                        ScrollArea::vertical().max_height(440.0).show(ui, |ui| {
+                            for (k, &e) in matches.iter().take(200).enumerate() {
+                                let entry = &self.entries[e];
+                                let r = item(
+                                    ui,
+                                    k == *selected,
+                                    format!("{}  {}", entry.label, entry.detail),
+                                );
+                                if k == *selected {
+                                    r.scroll_to_me(None);
+                                }
+                                if r.clicked() {
+                                    jump = Some(e);
+                                }
+                            }
+                        });
+                    },
+                );
             });
-            ui.label(RichText::new(format!("{} results", matches.len())).weak());
-            ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-                for (k, &e) in matches.iter().take(200).enumerate() {
-                    let entry = &self.entries[e];
-                    let text = RichText::new(format!("{}   {}", entry.label, entry.detail));
-                    let r = ui.selectable_label(k == *selected, text);
-                    if k == *selected {
-                        r.scroll_to_me(None);
-                    }
-                    if r.clicked() {
-                        jump = Some(e);
-                    }
-                }
-            });
-        });
         if let Some(e) = jump {
             self.palette = None;
             self.jump(e);
@@ -483,20 +559,30 @@ impl eframe::App for App {
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
             self.surface = (self.surface + 1) % graph::SURFACE_MODES.len();
         }
-        egui::Panel::top("tabs").show(ui, |ui| {
-            ui.add_space(4.0);
-            self.top_bar(ui);
-            ui.add_space(4.0);
-        });
+        egui::Panel::top("tabs")
+            .show_separator_line(false)
+            .frame(look::panel())
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                self.top_bar(ui);
+            });
         let now = ui.input(|i| i.time);
-        egui::Panel::bottom("status").show(ui, |ui| match &self.status {
-            Some((text, t)) if now - t < 3.0 => {
-                ui.label(RichText::new(text).color(GREEN));
-            }
-            _ => {
-                ui.label(RichText::new("Ctrl+P: go to · click a result to copy it").weak());
-            }
-        });
+        egui::Panel::bottom("status")
+            .show_separator_line(false)
+            .frame(look::panel())
+            .show(ui, |ui| match &self.status {
+                Some((text, t)) if now - t < 3.0 => {
+                    ui.label(RichText::new(format!(" {text}")).color(GREEN).strong());
+                }
+                _ => {
+                    ui.label(
+                        RichText::new(
+                            " Ctrl+P go to · click a result to copy it · F2 3D surface mode",
+                        )
+                        .color(GRAY),
+                    );
+                }
+            });
         match self.tab {
             FORMULAS_TAB => self.formulas(ui),
             GRAPH_TAB => graph::show(self, ui),
@@ -506,20 +592,6 @@ impl eframe::App for App {
         self.palette_window(ui);
         screenshot(ui);
     }
-}
-
-/// The dark theme with the accent color of scibox.
-fn style(ctx: &egui::Context) {
-    ctx.set_theme(egui::Theme::Dark);
-    ctx.global_style_mut(|s| {
-        s.visuals.selection.bg_fill = ACCENT.linear_multiply(0.45);
-        s.visuals.selection.stroke.color = ACCENT;
-        s.visuals.panel_fill = Color32::from_rgb(0x14, 0x18, 0x1d);
-        s.visuals.extreme_bg_color = Color32::from_rgb(0x0e, 0x11, 0x15);
-        for font in s.text_styles.values_mut() {
-            font.size *= 1.15;
-        }
-    });
 }
 
 /// If the variable SCIBOX_SCREENSHOT is set, save the window to that file (PPM format) and quit.
