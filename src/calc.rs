@@ -9,6 +9,8 @@ pub struct Ctx {
     pub ans: f64,
     /// If true, trigonometric functions use degrees. If false, they use radians.
     pub deg: bool,
+    /// The value of the variable `x` (graph only).
+    pub x: Option<f64>,
 }
 
 pub fn eval(src: &str, ctx: &Ctx) -> Result<f64, String> {
@@ -165,6 +167,7 @@ impl Parser<'_> {
             "e" => Ok(std::f64::consts::E),
             "tau" => Ok(std::f64::consts::TAU),
             "ans" => Ok(self.ctx.ans),
+            "x" if self.ctx.x.is_some() => Ok(self.ctx.x.unwrap_or_default()),
             _ => Err(format!("unknown name '{name}'")),
         }
     }
@@ -238,6 +241,7 @@ mod tests {
             &Ctx {
                 ans: 7.0,
                 deg: false,
+                x: Some(3.0),
             },
         )
         .unwrap()
@@ -253,6 +257,7 @@ mod tests {
         assert_eq!(ev("1.5e3 + 2E-1"), 1500.2);
         assert_eq!(ev("5!"), 120.0);
         assert_eq!(ev("ans * 2"), 14.0);
+        assert_eq!(ev("2x^2"), 18.0);
         assert_eq!(ev("2e"), 2.0 * std::f64::consts::E);
         assert_eq!(ev("3(1 + 1)"), 6.0);
         assert_eq!(ev("2pi^2"), 2.0 * std::f64::consts::PI.powi(2));
@@ -260,11 +265,13 @@ mod tests {
         let deg = Ctx {
             ans: 0.0,
             deg: true,
+            x: None,
         };
         assert!((eval("cos(60)", &deg).unwrap() - 0.5).abs() < 1e-12);
         assert!(eval("2 +", &deg).is_err());
         assert!(eval("foo(1)", &deg).is_err());
         assert!(eval("(1", &deg).is_err());
+        assert!(eval("x", &deg).is_err());
     }
 
     #[test]

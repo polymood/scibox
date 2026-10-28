@@ -1,10 +1,10 @@
 [package]
-name = "unitconv"
+name = "scibox"
 version = "0.1.0"
 edition = "2024"
-description = "A simple universal unit converter and scientific calculator for the terminal"
+description = "A universal unit converter, engineering formula solver, graph plotter, and scientific calculator for the terminal"
 license = "MIT"
-repository = "https://github.com/polymood/unitconv"
+repository = "https://github.com/polymood/scibox"
 
 [dependencies]
 ratatui = "0.30.2"

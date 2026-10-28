@@ -1,78 +1,130 @@
-<p align="center"><img src="assets/logo.svg" width="120" alt="unitconv logo"></p>
+```text
+┌─┐┌─┐┬┌┐ ┌─┐─┐ ┬
+└─┐│  │├┴┐│ │┌┴┬┘
+└─┘└─┘┴└─┘└─┘┴ └─
+```
 
-# unitconv
+# scibox
 
-unitconv is a universal unit converter for the terminal.
-It also has a scientific calculator.
+scibox is a toolbox for engineers and scientists in the terminal.
+It contains a unit converter, an engineering formula solver, a graph plotter, and a scientific calculator.
 You can use the keyboard or the mouse.
 
 ```text
- unitconv   Common   Engineering   Science   Computing   Calculator
-┌ Value ──────────────────────────────────────────────────────────────────── Square inch (in²) ┐
-│12.5█                                                                                         │
+ scibox   Common   Engineering   Science   Computing   Formulas   Graph   Calc         ⌕ Ctrl+P
+┌ Domain ─────┐┌ Formula ─────────────────────────┐┌Link budget (Friis)───────── Decibels & RF ┐
+│Decibels & RF││Amplitude ratio from dB           ││ Pr = Pt + Gt + Gr − 20·log10(4π·d·f / c)  │
+│Electronics  ││Power gain                        │└───────────────────────────────────────────┘
+│Mechanics    ││Voltage gain                      │┌ Variables ────────────────────────────────┐
+│Structures   ││dBm to watt                       ││◉ Pr -76.0520080561   dBm  Received power  │
+│Thermal      ││dBW to watt                       ││○ Pt 20█              dBm  Transmitted powe│
+│Fluids       ││dBµV to volt                      ││○ Gt 2                dBi  Transmit antenna│
+│Physics      ││dBm to dBµV                       ││○ Gr 2                dBi  Receive antenna │
+│             ││Sum of two levels                 ││○ d  1000             m    Distance        │
+│             ││Sound pressure level              ││○ f  2400000000       Hz   Frequency       │
+│             ││Wavelength                        ││                                           │
+│             ││Free-space path loss              ││                                           │
+│             ││Link budget (Friis)               ││                                           │
+└─────────────┘└──────────────────────────────────┘└ Enter or click ○: solve for this variable ┘
+```
+
+```text
+ scibox   Common   Engineering   Science   Computing   Formulas   Graph   Calc         ⌕ Ctrl+P
+┌ f(x) =  (separate functions with ;) ─────────────────────────────┐┌ x min ─────┐┌ x max ─────┐
+│sin(x); x^2 / 10█                                                 ││-10         ││10          │
+└──────────────────────────────────────────────────────────────────┘└────────────┘└────────────┘
+┌ Graph (angles in radians) ───────────────────────────────────────────────────────────────────┐
+│10.332│⠢⢄⡀                                        ⢸                                        ⢀⡠⠔│
+│      │  ⠘⠢⢄⡀                                     ⢸                                     ⢀⡠⠔⠃  │
+│      │     ⠈⠑⠦⣀                                  ⢸                                  ⣀⠴⠊⠁     │
+│      │         ⠉⠒⢤⡀                              ⢸                              ⢀⡤⠒⠉         │
+│4.397 │            ⠈⠑⠒⠤⣀                          ⢸                          ⣀⠤⠒⠊⠁            │
+│      │                 ⠉⠑⠒⠤⣀⡀                    ⢸                    ⢀⣀⠤⠒⠊⠉                 │
+│      │                      ⠈⠉⠒⠢⠤⢄⣀⣀             ⢸             ⣀⣀⡠⠤⠔⠒⠉⠁                      │
+│      │⠒⠢⢤⣀⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⡤⠔⠒⠊⠉⠉⠉⠉⠉⠉⠑⠒⠢⠈⠉⠉⠑⠒⠒⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠔⠒⠒⠊⠉⠉⠁⡀⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⣠⠤⠒⠒⠉⠉⠉⠉⠉⠉⠉⠒⠒⠤⣄⡀⠤│
+│-1.538│    ⠉⠉⠒⠒⠒⠒⠒⠒⠒⠉⠉                ⠈⠉⠑⠒⠒⠒⠒⠒⠒⠉⠉ ⢸              ⠈⠉⠑⠒⠒⠒⠒⠒⠒⠊⠉                ⠈⠉│
+│      └───────────────────────────────────────────────────────────────────────────────────────│
+│    -10                                           0                                         10│
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌ Category ──────┐┌ From ──────────────────┐┌ Result ──────────────────────────────────────────┐
-│Length          ││Square meter            ││        0.0080645 m²      Square meter            │
-│Area            ││Square kilometer        ││        8.0645e-9 km²     Square kilometer        │
-│Volume          ││Square centimeter       ││           80.645 cm²     Square centimeter       │
-│Mass            ││Square millimeter       ││           8064.5 mm²     Square millimeter       │
-│Time            ││Hectare                 ││        8.0645e-7 ha      Hectare                 │
-│Speed           ││Are                     ││        8.0645e-5 a       Are                     │
-│Temperature     ││Square inch             ││             12.5 in²     Square inch             │
-│                ││Square foot             ││  0.0868055555556 ft²     Square foot             │
-│                ││Square yard             ││  0.0096450617284 yd²     Square yard             │
-│                ││Acre                    ││ 1.99278134884e-6 ac      Acre                    │
-│                ││Square mile             ││ 3.11372085757e-9 mi²     Square mile             │
-│                ││                        ││                                                  │
 ```
 
 ## Features
 
-- More than 30 categories in 4 tabs: Common, Engineering, Science, and Computing.
-- One input value shows the result in all the units of the category.
-- The value input accepts expressions, for example `3*12.5` or `2pi`.
-- A scientific calculator tab with a keypad that you can click.
-- One file contains all the unit data. To add a unit, add one line.
+- **Unit converter**: more than 30 categories in 4 tabs (Common, Engineering, Science, Computing).
+  One input value shows the result in all the units of the category.
+- **Logarithmic units**: dBm, dBW, dBV, dBu, dBµV, dB SPL, and the power and amplitude ratios (dB, B, Np).
+- **Number base**: decimal, hexadecimal, binary, and octal (128-bit integers).
+- **Formulas**: more than 130 formulas in 7 domains (Decibels & RF, Electronics, Mechanics, Structures, Thermal, Fluids, Physics).
+  You can solve each formula for any variable.
+- **Graph**: plot one or more functions of `x`.
+- **Calculator**: a scientific calculator with a keypad that you can click.
+- **Go to**: press Ctrl+P and type a part of a name to go to a category, a unit, or a formula.
+- **Copy**: copy a result to the clipboard with Ctrl+Y or with a mouse click.
+- All the input fields accept expressions, for example `3*12.5`, `2pi`, or `4.7e3`.
 
 ## Install
 
 You must have the Rust toolchain (`cargo`).
 
 ```sh
-cargo install --git https://github.com/polymood/unitconv
+cargo install --git https://github.com/polymood/scibox
 ```
 
 To build from the source code:
 
 ```sh
-git clone https://github.com/polymood/unitconv
-cd unitconv
+git clone https://github.com/polymood/scibox
+cd scibox
 cargo run --release
 ```
 
 ## Use
 
+### General keys
+
 | Key | Action |
 | --- | --- |
+| Ctrl+P, Ctrl+K | Open the "Go to" window |
 | Left, Right | Go to the previous or the next tab |
-| Tab | Move the focus between the category list and the unit list |
-| Up, Down | Select a category or a unit |
-| Characters | Type the value or the expression |
+| Tab, Shift+Tab | Move the focus to the next or the previous pane |
+| Up, Down | Select an item in the pane that has the focus |
 | Backspace | Delete the last character |
 | Delete | Clear the input |
-| Enter | Calculate the expression (calculator tab) |
-| Esc, Ctrl+C | Quit |
+| Ctrl+Y | Copy the current result |
+| Esc, Ctrl+C | Quit (Esc closes the "Go to" window first) |
 
-With the mouse:
+You can also click the tabs, the lists, and the `⌕ Ctrl+P` button.
+Turn the mouse wheel to scroll a list.
 
-- Click a tab, a category, or a unit to select it.
-- Click a result to make it the new input value and unit.
-- Turn the mouse wheel to scroll a list.
-- Click the keys of the calculator keypad.
+### Converter tabs
 
-An empty input has the value 1.
+1. Select a category and the "From" unit.
+2. Type the value. An empty input has the value 1.
+3. Read the results in the "Result" pane.
 
-## Calculator
+To copy a result, click it. To use a result as the new input, right-click it, or select it and press Enter.
+
+### Formulas tab
+
+The green radio button (◉) shows the variable that scibox calculates.
+
+1. Select a domain and a formula.
+2. Select a variable and type its value. The result changes immediately.
+3. To calculate a different variable, select it and press Enter, or click its radio button (○).
+
+If you type a value in the result row, scibox calculates the variable that you did not change for the longest time.
+A numerical solver finds the variable. Thus, all the forms of a formula are available.
+For example, the formula "dBm to watt" also converts watts to dBm.
+
+### Graph tab
+
+1. Type one or more functions of `x`. Use `;` between the functions, for example `sin(x); x^2/10`.
+2. Type the minimum and the maximum value of `x`.
+
+Turn the mouse wheel on the graph to zoom. Drag the graph to move it.
+The trigonometric functions of the graph use radians.
+
+### Calculator tab
 
 | Item | Syntax |
 | --- | --- |
@@ -82,9 +134,14 @@ An empty input has the value 1.
 | Functions | `sin cos tan asin acos atan sinh cosh tanh sqrt cbrt ln log log2 exp abs floor ceil round` |
 
 The DEG key sets the angle unit to degrees or radians.
-The trigonometric functions use this angle unit.
 After a result, type a number to start a new calculation.
 Type an operator to continue the calculation with the result.
+
+### Clipboard
+
+scibox sends the copied text to the terminal with the OSC 52 sequence.
+Most terminals accept this sequence (Windows Terminal, kitty, WezTerm, iTerm2, and tmux with `set-clipboard on`).
+scibox also gives the text to the first available program: `clip.exe` (WSL), `pbcopy`, `wl-copy`, `xclip`, or `xsel`.
 
 ## Add a unit
 
@@ -106,22 +163,34 @@ For units that do not have a simple factor, use these functions:
 
 - `affine(name, symbol, factor, offset)`: base = value × factor + offset (temperature scales).
 - `inverse(name, symbol, k)`: base = k / value (fuel consumption).
+- `log(name, symbol, reference, k)`: base = reference × 10^(value / k) (dBm: reference 0.001 W, k 10).
 
-## Add a category
+To add a category, write a `const` block in `src/units.rs` and add its name to a group in `GROUPS`.
+To add a converter tab, add a new `Group` to `GROUPS`.
 
-1. Write a `const` block in `src/units.rs`:
+## Add a formula
+
+All the formulas are in `src/formulas.rs`.
+A formula has a name, an equation text, a function, and a list of variables.
+The function calculates the first variable `x[0]` from the other variables `x[1]`, `x[2]`, and so on.
+
+1. Open `src/formulas.rs`.
+2. Find the domain.
+3. Add the formula:
 
    ```rust
-   const LUMINOUS_FLUX: Category = Category {
-       name: "Luminous flux",
-       units: &[u("Lumen", "lm", 1.0), u("Kilolumen", "klm", 1e3)],
-   };
+   eq("Ohm's law", "V = I·R", |x| x[1] * x[2], &[
+       v("V", "Voltage", "V", 0.0),
+       v("I", "Current", "A", 0.01),
+       v("R", "Resistance", "Ω", 1000.0),
+   ]),
    ```
 
-2. Add the name of the block to a group in `GROUPS`.
-3. Run `cargo test`.
+   The arguments of `v` are the symbol, the name, the unit, and the default value.
+4. Run `cargo test`.
 
-To add a tab, add a new `Group` to `GROUPS`.
+You do not write the other forms of the formula. The solver calculates them.
+To add a domain, write a `const` list of formulas and add it to `DOMAINS`.
 
 ## Test
 
@@ -129,8 +198,10 @@ To add a tab, add a new `Group` to `GROUPS`.
 cargo test
 ```
 
-The test `round_trip_all_units` converts each unit to the base unit and back.
-Thus, an incorrect line in `src/units.rs` causes a test failure.
+- The test `round_trip_all_units` converts each unit to the base unit and back.
+- The test `solve_all_formulas` solves each formula for each variable.
+
+Thus, an incorrect line in `src/units.rs` or in `src/formulas.rs` causes a test failure.
 
 ## License
 

@@ -2,7 +2,7 @@
 //! To add a unit, add one line to its category.
 //! To add a category, write one `const` block and add it to a group in `GROUPS`.
 
-use std::f64::consts::PI;
+use std::f64::consts::{LN_10, PI};
 
 /// The relation between a unit value `v` and the base unit value `b`.
 pub enum Conv {
@@ -12,6 +12,10 @@ pub enum Conv {
     Affine(f64, f64),
     /// b = k / v (for example, fuel consumption)
     Inverse(f64),
+    /// b = reference * 10^(v / k) (logarithmic units, for example dBm: reference 1 mW, k 10)
+    Log(f64, f64),
+    /// An integer in base r. The converter uses `radix_convert` for these units.
+    Radix(u32),
 }
 
 pub struct Unit {
@@ -36,6 +40,8 @@ impl Unit {
             Conv::Scale(f) => v * f,
             Conv::Affine(f, o) => v * f + o,
             Conv::Inverse(k) => k / v,
+            Conv::Log(r, k) => r * 10f64.powf(v / k),
+            Conv::Radix(_) => v,
         }
     }
 
@@ -44,6 +50,8 @@ impl Unit {
             Conv::Scale(f) => b / f,
             Conv::Affine(f, o) => (b - o) / f,
             Conv::Inverse(k) => k / b,
+            Conv::Log(r, k) => k * (b / r).log10(),
+            Conv::Radix(_) => b,
         }
     }
 }
@@ -67,6 +75,61 @@ const fn affine(name: &'static str, symbol: &'static str, factor: f64, offset: f
         symbol,
         conv: Conv::Affine(factor, offset),
     }
+}
+
+const fn log(name: &'static str, symbol: &'static str, reference: f64, k: f64) -> Unit {
+    Unit {
+        name,
+        symbol,
+        conv: Conv::Log(reference, k),
+    }
+}
+
+const fn radix(name: &'static str, symbol: &'static str, r: u32) -> Unit {
+    Unit {
+        name,
+        symbol,
+        conv: Conv::Radix(r),
+    }
+}
+
+/// Convert the integer text `input` from the unit `from` to the unit `to`. Both units must be `Radix` units.
+pub fn radix_convert(input: &str, from: &Unit, to: &Unit) -> Result<String, String> {
+    let (Conv::Radix(rf), Conv::Radix(rt)) = (&from.conv, &to.conv) else {
+        return Err("not a number base unit".into());
+    };
+    let text: String = input.chars().filter(|c| !matches!(c, ' ' | '_')).collect();
+    let (neg, text) = match text.strip_prefix('-') {
+        Some(t) => (true, t.to_string()),
+        None => (false, text),
+    };
+    let lower = text.to_lowercase();
+    let digits = ["0x", "0b", "0o"]
+        .iter()
+        .find_map(|p| lower.strip_prefix(p))
+        .unwrap_or(&lower);
+    let n = u128::from_str_radix(digits, *rf).map_err(|_| format!("not a base {rf} integer"))?;
+    let s = match rt {
+        2 => format!("{n:b}"),
+        8 => format!("{n:o}"),
+        16 => format!("{n:X}"),
+        _ => n.to_string(),
+    };
+    // Put a space between groups of 4 binary digits.
+    let s = if *rt == 2 {
+        let first = s.len() % 4;
+        let mut out = s[..first].to_string();
+        for (i, c) in s[first..].chars().enumerate() {
+            if i % 4 == 0 && !out.is_empty() {
+                out.push(' ');
+            }
+            out.push(c);
+        }
+        out
+    } else {
+        s
+    };
+    Ok(if neg { format!("-{s}") } else { s })
 }
 
 const fn inverse(name: &'static str, symbol: &'static str, k: f64) -> Unit {
@@ -97,6 +160,8 @@ pub static GROUPS: &[Group] = &[
             FLOW,
             VISCOSITY,
             FUEL,
+            POWER_RATIO,
+            AMPLITUDE_RATIO,
         ],
     },
     Group {
@@ -116,7 +181,7 @@ pub static GROUPS: &[Group] = &[
     },
     Group {
         name: "Computing",
-        categories: &[DATA, DATA_RATE],
+        categories: &[NUMBER_BASE, DATA, DATA_RATE],
     },
 ];
 
@@ -255,6 +320,7 @@ const PRESSURE: Category = Category {
         u("Torr", "Torr", 101_325.0 / 760.0),
         u("Millimeter of mercury", "mmHg", 133.322_387_415),
         u("Inch of mercury", "inHg", 3386.389),
+        log("Sound pressure level", "dB SPL", 20e-6, 20.0),
     ],
 };
 
@@ -285,6 +351,8 @@ const POWER: Category = Category {
         u("Horsepower (mechanical)", "hp", 745.699_871_582_270_2),
         u("Horsepower (metric)", "PS", 735.498_75),
         u("BTU per hour", "BTU/h", 0.293_071_070_17),
+        log("Decibel-milliwatt", "dBm", 1e-3, 10.0),
+        log("Decibel-watt", "dBW", 1.0, 10.0),
     ],
 };
 
@@ -388,6 +456,27 @@ const FUEL: Category = Category {
     ],
 };
 
+const POWER_RATIO: Category = Category {
+    name: "Power ratio",
+    units: &[
+        u("Ratio", "×", 1.0),
+        u("Percent", "%", 0.01),
+        log("Decibel", "dB", 1.0, 10.0),
+        log("Bel", "B", 1.0, 1.0),
+        log("Neper", "Np", 1.0, LN_10 / 2.0),
+    ],
+};
+
+const AMPLITUDE_RATIO: Category = Category {
+    name: "Amplitude ratio",
+    units: &[
+        u("Ratio", "×", 1.0),
+        u("Percent", "%", 0.01),
+        log("Decibel", "dB", 1.0, 20.0),
+        log("Neper", "Np", 1.0, LN_10),
+    ],
+};
+
 // ---- Science ----
 
 const CURRENT: Category = Category {
@@ -407,6 +496,15 @@ const VOLTAGE: Category = Category {
         u("Microvolt", "µV", 1e-6),
         u("Millivolt", "mV", 1e-3),
         u("Kilovolt", "kV", 1e3),
+        log("Decibel-volt", "dBV", 1.0, 20.0),
+        log(
+            "Decibel-unloaded (0.775 V)",
+            "dBu",
+            0.774_596_669_241_483_4,
+            20.0,
+        ),
+        log("Decibel-millivolt", "dBmV", 1e-3, 20.0),
+        log("Decibel-microvolt", "dBµV", 1e-6, 20.0),
     ],
 };
 
@@ -492,6 +590,16 @@ const EQUIVALENT_DOSE: Category = Category {
 
 // ---- Computing ----
 
+const NUMBER_BASE: Category = Category {
+    name: "Number base",
+    units: &[
+        radix("Decimal", "dec", 10),
+        radix("Hexadecimal", "hex", 16),
+        radix("Binary", "bin", 2),
+        radix("Octal", "oct", 8),
+    ],
+};
+
 const DATA: Category = Category {
     name: "Data size",
     units: &[
@@ -539,6 +647,20 @@ mod tests {
             1.609344
         ));
         assert!(close(convert(5.0, &FUEL.units[1], &FUEL.units[0]), 20.0));
+        assert!(close(convert(30.0, &POWER.units[7], &POWER.units[0]), 1.0));
+        assert!(close(
+            convert(2.0, &POWER_RATIO.units[0], &POWER_RATIO.units[2]),
+            3.010_299_956_639_812
+        ));
+        assert!(close(
+            convert(1.0, &AMPLITUDE_RATIO.units[3], &POWER_RATIO.units[0]),
+            std::f64::consts::E
+        ));
+        let b = &NUMBER_BASE.units;
+        assert_eq!(radix_convert("255", &b[0], &b[1]).unwrap(), "FF");
+        assert_eq!(radix_convert("0xff", &b[1], &b[2]).unwrap(), "1111 1111");
+        assert_eq!(radix_convert("1 0000 0000", &b[2], &b[0]).unwrap(), "256");
+        assert_eq!(radix_convert("-17", &b[0], &b[3]).unwrap(), "-21");
     }
 
     /// Every unit must convert to the base unit and back without loss.
