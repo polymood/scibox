@@ -7,7 +7,7 @@
 //!   (f(t), g(t))           parametric curve, t from 0 to 2π
 //!   z = f(x, y)            3D surface
 
-use crate::calc::{self, Ctx};
+use crate::calc::{self, Ctx, Expr};
 use crate::{App, ui};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -43,43 +43,49 @@ const HEIGHTS: [Color; 5] = [
 
 type Point = (f64, f64);
 
+/// An item of the input, with its expressions compiled once for the whole graph.
 enum Item {
-    Function(String),
+    Function(Expr),
     /// The two sides of an equation.
-    Equation(String, String),
-    Polar(String),
-    Parametric(String, String),
-    Surface(String),
+    Equation(Expr, Expr),
+    Polar(Expr),
+    Parametric(Expr, Expr),
+    Surface(Expr),
 }
 
-fn parse(src: &str) -> Vec<Item> {
+/// The items of the input: the text of each item, and the item or its syntax error.
+fn parse(src: &str) -> Vec<(String, Result<Item, String>)> {
     src.split(';')
-        .map(|s| s.chars().filter(|c| !c.is_whitespace()).collect::<String>())
+        .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(classify)
+        .map(|s| {
+            let compact: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+            (s.to_string(), classify(&compact))
+        })
         .collect()
 }
 
-fn classify(s: String) -> Item {
+fn classify(s: &str) -> Result<Item, String> {
+    let c = |e: &str| calc::compile(e).map_err(|err| format!("{e}: {err}"));
     if let Some(rest) = s.strip_prefix("z=") {
-        return Item::Surface(rest.into());
+        return Ok(Item::Surface(c(rest)?));
     }
     if let Some(rest) = s.strip_prefix("r=") {
-        return Item::Polar(rest.into());
+        return Ok(Item::Polar(c(rest)?));
     }
     if let Some(rest) = s.strip_prefix("y=").filter(|r| !r.contains(['y', '='])) {
-        return Item::Function(rest.into());
+        return Ok(Item::Function(c(rest)?));
     }
     if let Some((a, b)) = s
         .strip_prefix('(')
         .and_then(|r| r.strip_suffix(')'))
         .and_then(split_comma)
     {
-        return Item::Parametric(a.into(), b.into());
+        return Ok(Item::Parametric(c(a)?, c(b)?));
     }
     match s.split_once('=') {
-        Some((a, b)) => Item::Equation(a.into(), b.into()),
-        None => Item::Function(s),
+        Some((a, b)) => Ok(Item::Equation(c(a)?, c(b)?)),
+        None => Ok(Item::Function(c(s)?)),
     }
 }
 
@@ -99,11 +105,13 @@ fn split_comma(s: &str) -> Option<(&str, &str)> {
 
 /// True if the input contains a 3D surface. Then a mouse drag turns the view.
 pub fn is_3d(src: &str) -> bool {
-    parse(src).iter().any(|i| matches!(i, Item::Surface(_)))
+    parse(src)
+        .iter()
+        .any(|(_, i)| matches!(i, Ok(Item::Surface(_))))
 }
 
 /// Calculate an expression. Return `None` for an error or a value that is not finite.
-fn ev(expr: &str, ans: f64, x: f64, y: f64, t: f64) -> Option<f64> {
+fn ev(expr: &Expr, ans: f64, x: f64, y: f64, t: f64) -> Option<f64> {
     let ctx = Ctx {
         ans,
         x: Some(x),
@@ -111,24 +119,7 @@ fn ev(expr: &str, ans: f64, x: f64, y: f64, t: f64) -> Option<f64> {
         t: Some(t),
         ..Default::default()
     };
-    calc::eval(expr, &ctx).ok().filter(|v| v.is_finite())
-}
-
-/// The syntax error of an item, if there is one. Domain errors (for example sqrt(-1)) are not syntax errors.
-fn syntax_error(item: &Item) -> Option<String> {
-    let exprs: Vec<&String> = match item {
-        Item::Function(e) | Item::Polar(e) | Item::Surface(e) => vec![e],
-        Item::Equation(a, b) | Item::Parametric(a, b) => vec![a, b],
-    };
-    let ctx = Ctx {
-        x: Some(0.5),
-        y: Some(0.5),
-        t: Some(0.5),
-        ..Default::default()
-    };
-    exprs
-        .iter()
-        .find_map(|e| calc::eval(e, &ctx).err().map(|err| format!("{e}: {err}")))
+    expr.eval(&ctx).ok().filter(|v| v.is_finite())
 }
 
 /// A short number for the axis labels.
@@ -178,14 +169,8 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
     let style = MARKERS[app.marker];
     // The title shows each item in the color of its curve.
     let mut title = vec![Span::from(" ")];
-    for (i, item) in items.iter().enumerate() {
-        let text = app.graph[0]
-            .split(';')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .nth(i)
-            .unwrap_or("");
-        let color = if matches!(item, Item::Surface(_)) {
+    for (i, (text, item)) in items.iter().enumerate() {
+        let color = if matches!(item, Ok(Item::Surface(_))) {
             Color::White
         } else {
             CURVES[i % CURVES.len()]
@@ -198,7 +183,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
             .right_aligned()
             .dark_gray(),
     );
-    if let Some(e) = items.iter().find_map(syntax_error) {
+    if let Some(e) = items.iter().find_map(|(_, i)| i.as_ref().err()) {
         chart_block = chart_block.title_bottom(Line::from(format!(" {e} ")).red());
     }
     let inner = chart_block.inner(chart_area);
@@ -211,7 +196,11 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     };
     let y_fields = app.y_fields();
-    if let Some(Item::Surface(expr)) = items.iter().find(|i| matches!(i, Item::Surface(_))) {
+    if let Some(Ok(Item::Surface(expr))) = items
+        .iter()
+        .map(|(_, i)| i)
+        .find(|i| matches!(i, Ok(Item::Surface(_))))
+    {
         let (c, d) = y_fields.unwrap_or((a, b));
         draw_3d(f, app, inner, expr, (a, b), (c, d));
     } else {
@@ -223,7 +212,7 @@ fn draw_2d(
     f: &mut Frame,
     app: &mut App,
     inner: Rect,
-    items: &[Item],
+    items: &[(String, Result<Item, String>)],
     (a, b): (f64, f64),
     y_fields: Option<(f64, f64)>,
 ) {
@@ -240,8 +229,8 @@ fn draw_2d(
     let xs: Vec<f64> = (0..=n).map(|k| a + (b - a) * k as f64 / n as f64).collect();
     let functions: Vec<Option<Vec<Option<f64>>>> = items
         .iter()
-        .map(|item| match item {
-            Item::Function(e) => Some(xs.iter().map(|&x| ev(e, ans, x, 0.0, 0.0)).collect()),
+        .map(|(_, item)| match item {
+            Ok(Item::Function(e)) => Some(xs.iter().map(|&x| ev(e, ans, x, 0.0, 0.0)).collect()),
             _ => None,
         })
         .collect();
@@ -249,7 +238,12 @@ fn draw_2d(
     // The y range: the fields, or the 1st to the 99th percentile of the functions (poles do not hide the curves).
     // If there are equations or curves, use the same scale as x (circles are round).
     // A terminal cell is about twice as high as it is wide.
-    let only_functions = items.iter().all(|i| matches!(i, Item::Function(_)));
+    let only_functions = items.iter().all(|(_, i)| {
+        !matches!(
+            i,
+            Ok(Item::Equation(..) | Item::Polar(_) | Item::Parametric(..))
+        )
+    });
     let (lo, hi) = y_fields.unwrap_or_else(|| {
         let mut ys: Vec<f64> = functions
             .iter()
@@ -276,7 +270,8 @@ fn draw_2d(
     let mut lines: Vec<(Color, Vec<Vec<Point>>)> = Vec::new();
     let mut points: Vec<(Color, Vec<(f64, f64)>)> = Vec::new();
     let ts: Vec<f64> = (0..=720).map(|k| TAU * k as f64 / 720.0).collect();
-    for (i, item) in items.iter().enumerate() {
+    for (i, (_, item)) in items.iter().enumerate() {
+        let Ok(item) = item else { continue };
         let color = CURVES[i % CURVES.len()];
         let pts: Vec<Option<(f64, f64)>> = match item {
             Item::Function(_) => {
@@ -355,8 +350,8 @@ fn draw_2d(
 
 /// The points where `l = r` changes from true to false: one test for each pixel of the plot.
 fn equation_points(
-    l: &str,
-    r: &str,
+    l: &Expr,
+    r: &Expr,
     ans: f64,
     (a, b): (f64, f64),
     (lo, hi): (f64, f64),
@@ -420,7 +415,7 @@ fn draw_3d(
     f: &mut Frame,
     app: &mut App,
     inner: Rect,
-    expr: &str,
+    expr: &Expr,
     (a, b): (f64, f64),
     (c, d): (f64, f64),
 ) {
@@ -524,25 +519,30 @@ mod tests {
     #[test]
     fn kinds() {
         let items = parse(
-            "sin(x); y = x^2; x = 2; x^2 + y^2 = 9; r = 1 + cos(t); (cos(t), sin(2t)); z = x*y",
+            "sin(x); y = x^2; sin(; x = 2; x^2 + y^2 = 9; r = 1 + cos(t); (cos(t), sin(2t)); z = x*y",
         );
         let kinds: Vec<&str> = items
             .iter()
-            .map(|i| match i {
-                Item::Function(_) => "f",
-                Item::Equation(..) => "eq",
-                Item::Polar(_) => "polar",
-                Item::Parametric(..) => "param",
-                Item::Surface(_) => "3d",
+            .map(|(_, i)| match i {
+                Ok(Item::Function(_)) => "f",
+                Ok(Item::Equation(..)) => "eq",
+                Ok(Item::Polar(_)) => "polar",
+                Ok(Item::Parametric(..)) => "param",
+                Ok(Item::Surface(_)) => "3d",
+                Err(_) => "error",
             })
             .collect();
-        assert_eq!(kinds, ["f", "f", "eq", "eq", "polar", "param", "3d"]);
+        assert_eq!(
+            kinds,
+            ["f", "f", "error", "eq", "eq", "polar", "param", "3d"]
+        );
     }
 
     #[test]
     fn vertical_line() {
         // x = 2 on a 40 x 20 pixel grid from -4 to 4: one column of points at x = 2.
-        let pts = equation_points("x", "2", 0.0, (-4.0, 4.0), (-4.0, 4.0), 40, 20);
+        let (l, r) = (calc::compile("x").unwrap(), calc::compile("2").unwrap());
+        let pts = equation_points(&l, &r, 0.0, (-4.0, 4.0), (-4.0, 4.0), 40, 20);
         assert_eq!(pts.len(), 20);
         assert!(pts.iter().all(|p| (p.0 - 2.0).abs() < 0.2));
     }

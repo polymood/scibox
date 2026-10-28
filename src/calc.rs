@@ -2,7 +2,7 @@
 //!
 //! Operators: + - * / % ^ ! and parentheses.
 //! Constants: pi, e, tau, ans.
-//! Functions: see `call`.
+//! Functions: see `func`.
 
 #[derive(Default)]
 pub struct Ctx {
@@ -16,29 +16,91 @@ pub struct Ctx {
     pub t: Option<f64>,
 }
 
+/// Calculate an expression.
 pub fn eval(src: &str, ctx: &Ctx) -> Result<f64, String> {
+    compile(src)?.eval(ctx)
+}
+
+/// Parse an expression once. Then `Expr::eval` calculates it quickly for many values of x, y and t.
+pub fn compile(src: &str) -> Result<Expr, String> {
     let mut p = Parser {
         s: src.chars().filter(|c| !c.is_whitespace()).collect(),
         i: 0,
-        ctx,
     };
     if p.s.is_empty() {
         return Err("empty".into());
     }
-    let v = p.expr()?;
+    let e = p.expr()?;
     match p.peek() {
-        None => Ok(v),
+        None => Ok(e),
         Some(c) => Err(format!("unexpected '{c}'")),
     }
 }
 
-struct Parser<'a> {
-    s: Vec<char>,
-    i: usize,
-    ctx: &'a Ctx,
+/// A parsed expression.
+pub enum Expr {
+    Num(f64),
+    Ans,
+    /// The variable x (0), y (1) or t (2).
+    Var(usize),
+    Neg(Box<Expr>),
+    /// An operator (+ - * / % ^) and its two operands.
+    Bin(char, Box<Expr>, Box<Expr>),
+    Factorial(Box<Expr>),
+    Call(Func, Box<Expr>),
 }
 
-impl Parser<'_> {
+pub enum Func {
+    Plain(fn(f64) -> f64),
+    /// A function of an angle (sin, cos, tan).
+    AngleIn(fn(f64) -> f64),
+    /// A function that gives an angle (asin, acos, atan).
+    AngleOut(fn(f64) -> f64),
+}
+
+impl Expr {
+    pub fn eval(&self, ctx: &Ctx) -> Result<f64, String> {
+        Ok(match self {
+            Expr::Num(v) => *v,
+            Expr::Ans => ctx.ans,
+            Expr::Var(i) => [ctx.x, ctx.y, ctx.t][*i]
+                .ok_or_else(|| format!("unknown name '{}'", ["x", "y", "t"][*i]))?,
+            Expr::Neg(a) => -a.eval(ctx)?,
+            Expr::Bin(op, a, b) => {
+                let (a, b) = (a.eval(ctx)?, b.eval(ctx)?);
+                match op {
+                    '+' => a + b,
+                    '-' => a - b,
+                    '*' => a * b,
+                    '/' => a / b,
+                    '%' => a % b,
+                    _ => a.powf(b),
+                }
+            }
+            Expr::Factorial(a) => factorial(a.eval(ctx)?)?,
+            Expr::Call(f, a) => {
+                let x = a.eval(ctx)?;
+                match f {
+                    Func::Plain(g) => g(x),
+                    Func::AngleIn(g) => g(if ctx.deg { x.to_radians() } else { x }),
+                    Func::AngleOut(g) if ctx.deg => g(x).to_degrees(),
+                    Func::AngleOut(g) => g(x),
+                }
+            }
+        })
+    }
+}
+
+struct Parser {
+    s: Vec<char>,
+    i: usize,
+}
+
+fn bin(op: char, a: Expr, b: Expr) -> Expr {
+    Expr::Bin(op, Box::new(a), Box::new(b))
+}
+
+impl Parser {
     fn peek(&self) -> Option<char> {
         self.s.get(self.i).copied()
     }
@@ -52,41 +114,41 @@ impl Parser<'_> {
     }
 
     // expr = term (('+' | '-') term)*
-    fn expr(&mut self) -> Result<f64, String> {
-        let mut v = self.term()?;
+    fn expr(&mut self) -> Result<Expr, String> {
+        let mut e = self.term()?;
         loop {
             if self.eat('+') {
-                v += self.term()?;
+                e = bin('+', e, self.term()?);
             } else if self.eat('-') {
-                v -= self.term()?;
+                e = bin('-', e, self.term()?);
             } else {
-                return Ok(v);
+                return Ok(e);
             }
         }
     }
 
     // term = unary (('*' | '/' | '%' | implicit) unary)*   ("2pi" and "3(1+1)" are products)
-    fn term(&mut self) -> Result<f64, String> {
-        let mut v = self.unary()?;
+    fn term(&mut self) -> Result<Expr, String> {
+        let mut e = self.unary()?;
         loop {
             if self.eat('*') || self.eat('×') {
-                v *= self.unary()?;
+                e = bin('*', e, self.unary()?);
             } else if self.eat('/') || self.eat('÷') {
-                v /= self.unary()?;
+                e = bin('/', e, self.unary()?);
             } else if self.eat('%') {
-                v %= self.unary()?;
+                e = bin('%', e, self.unary()?);
             } else if matches!(self.peek(), Some(c) if c == '(' || c.is_alphabetic()) {
-                v *= self.unary()?;
+                e = bin('*', e, self.unary()?);
             } else {
-                return Ok(v);
+                return Ok(e);
             }
         }
     }
 
     // unary = ('-' | '+') unary | power
-    fn unary(&mut self) -> Result<f64, String> {
+    fn unary(&mut self) -> Result<Expr, String> {
         if self.eat('-') {
-            Ok(-self.unary()?)
+            Ok(Expr::Neg(Box::new(self.unary()?)))
         } else if self.eat('+') {
             self.unary()
         } else {
@@ -95,33 +157,33 @@ impl Parser<'_> {
     }
 
     // power = postfix ('^' unary)?   (right-associative: 2^3^2 = 2^9)
-    fn power(&mut self) -> Result<f64, String> {
+    fn power(&mut self) -> Result<Expr, String> {
         let base = self.postfix()?;
         if self.eat('^') {
-            Ok(base.powf(self.unary()?))
+            Ok(bin('^', base, self.unary()?))
         } else {
             Ok(base)
         }
     }
 
     // postfix = atom '!'*
-    fn postfix(&mut self) -> Result<f64, String> {
-        let mut v = self.atom()?;
+    fn postfix(&mut self) -> Result<Expr, String> {
+        let mut e = self.atom()?;
         while self.eat('!') {
-            v = factorial(v)?;
+            e = Expr::Factorial(Box::new(e));
         }
-        Ok(v)
+        Ok(e)
     }
 
-    fn atom(&mut self) -> Result<f64, String> {
+    fn atom(&mut self) -> Result<Expr, String> {
         match self.peek() {
             Some('(') => {
                 self.i += 1;
-                let v = self.expr()?;
+                let e = self.expr()?;
                 if !self.eat(')') {
                     return Err("missing ')'".into());
                 }
-                Ok(v)
+                Ok(e)
             }
             Some(c) if c.is_ascii_digit() || c == '.' => self.number(),
             Some(c) if c.is_alphabetic() => self.name(),
@@ -130,7 +192,7 @@ impl Parser<'_> {
         }
     }
 
-    fn number(&mut self) -> Result<f64, String> {
+    fn number(&mut self) -> Result<Expr, String> {
         let start = self.i;
         while matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == '.') {
             self.i += 1;
@@ -149,66 +211,60 @@ impl Parser<'_> {
             }
         }
         let text: String = self.s[start..self.i].iter().collect();
-        text.parse().map_err(|_| format!("bad number '{text}'"))
+        text.parse()
+            .map(Expr::Num)
+            .map_err(|_| format!("bad number '{text}'"))
     }
 
-    fn name(&mut self) -> Result<f64, String> {
+    fn name(&mut self) -> Result<Expr, String> {
         let start = self.i;
         while matches!(self.peek(), Some(c) if c.is_alphanumeric()) {
             self.i += 1;
         }
         let name: String = self.s[start..self.i].iter().collect();
         if self.eat('(') {
-            let x = self.expr()?;
+            let arg = self.expr()?;
             if !self.eat(')') {
                 return Err("missing ')'".into());
             }
-            return self.call(&name, x);
+            return Ok(Expr::Call(func(&name)?, Box::new(arg)));
         }
-        match name.as_str() {
-            "pi" | "π" => Ok(std::f64::consts::PI),
-            "e" => Ok(std::f64::consts::E),
-            "tau" => Ok(std::f64::consts::TAU),
-            "ans" => Ok(self.ctx.ans),
-            "x" | "y" | "t" => {
-                let v = match name.as_str() {
-                    "x" => self.ctx.x,
-                    "y" => self.ctx.y,
-                    _ => self.ctx.t,
-                };
-                v.ok_or(format!("unknown name '{name}'"))
-            }
-            _ => Err(format!("unknown name '{name}'")),
-        }
-    }
-
-    fn call(&self, name: &str, x: f64) -> Result<f64, String> {
-        // Convert the angle unit for the trigonometric functions.
-        let to_rad = |a: f64| if self.ctx.deg { a.to_radians() } else { a };
-        let from_rad = |a: f64| if self.ctx.deg { a.to_degrees() } else { a };
-        Ok(match name {
-            "sin" => to_rad(x).sin(),
-            "cos" => to_rad(x).cos(),
-            "tan" => to_rad(x).tan(),
-            "asin" => from_rad(x.asin()),
-            "acos" => from_rad(x.acos()),
-            "atan" => from_rad(x.atan()),
-            "sinh" => x.sinh(),
-            "cosh" => x.cosh(),
-            "tanh" => x.tanh(),
-            "sqrt" => x.sqrt(),
-            "cbrt" => x.cbrt(),
-            "ln" => x.ln(),
-            "log" => x.log10(),
-            "log2" => x.log2(),
-            "exp" => x.exp(),
-            "abs" => x.abs(),
-            "floor" => x.floor(),
-            "ceil" => x.ceil(),
-            "round" => x.round(),
-            _ => return Err(format!("unknown function '{name}'")),
+        Ok(match name.as_str() {
+            "pi" | "π" => Expr::Num(std::f64::consts::PI),
+            "e" => Expr::Num(std::f64::consts::E),
+            "tau" => Expr::Num(std::f64::consts::TAU),
+            "ans" => Expr::Ans,
+            "x" => Expr::Var(0),
+            "y" => Expr::Var(1),
+            "t" => Expr::Var(2),
+            _ => return Err(format!("unknown name '{name}'")),
         })
     }
+}
+
+fn func(name: &str) -> Result<Func, String> {
+    Ok(match name {
+        "sin" => Func::AngleIn(f64::sin),
+        "cos" => Func::AngleIn(f64::cos),
+        "tan" => Func::AngleIn(f64::tan),
+        "asin" => Func::AngleOut(f64::asin),
+        "acos" => Func::AngleOut(f64::acos),
+        "atan" => Func::AngleOut(f64::atan),
+        "sinh" => Func::Plain(f64::sinh),
+        "cosh" => Func::Plain(f64::cosh),
+        "tanh" => Func::Plain(f64::tanh),
+        "sqrt" => Func::Plain(f64::sqrt),
+        "cbrt" => Func::Plain(f64::cbrt),
+        "ln" => Func::Plain(f64::ln),
+        "log" => Func::Plain(f64::log10),
+        "log2" => Func::Plain(f64::log2),
+        "exp" => Func::Plain(f64::exp),
+        "abs" => Func::Plain(f64::abs),
+        "floor" => Func::Plain(f64::floor),
+        "ceil" => Func::Plain(f64::ceil),
+        "round" => Func::Plain(f64::round),
+        _ => return Err(format!("unknown function '{name}'")),
+    })
 }
 
 fn factorial(n: f64) -> Result<f64, String> {

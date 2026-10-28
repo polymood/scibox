@@ -618,10 +618,20 @@ fn row(area: Rect, offset: usize, pos: Position) -> Option<usize> {
 /// Also give the text to the first clipboard program that starts.
 fn copy_to_clipboard(text: &str) {
     use std::io::Write;
-    use std::process::{Command, Stdio};
     let mut out = std::io::stdout();
     let _ = write!(out, "\x1b]52;c;{}\x07", base64(text.as_bytes()));
     let _ = out.flush();
+    // Start the program in a thread: on WSL, clip.exe can need a long time to start.
+    let text = text.to_string();
+    std::thread::spawn(move || {
+        let _ = copy_with_program(&text);
+    });
+}
+
+/// Give the text to the first clipboard program that starts.
+fn copy_with_program(text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
     let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
     let x11 = std::env::var_os("DISPLAY").is_some();
     let programs: [(&str, &[&str], bool); 5] = [
@@ -643,13 +653,13 @@ fn copy_to_clipboard(text: &str) {
             .spawn();
         if let Ok(mut child) = child {
             if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(text.as_bytes());
+                stdin.write_all(text.as_bytes())?;
             }
-            // Wait in a thread. Some programs stay open to keep the clipboard.
-            std::thread::spawn(move || child.wait());
-            return;
+            child.wait()?;
+            return Ok(());
         }
     }
+    Ok(())
 }
 
 fn base64(data: &[u8]) -> String {
@@ -678,8 +688,10 @@ fn main() -> std::io::Result<()> {
     let result = (|| {
         while !app.quit {
             terminal.draw(|f| ui::draw(f, &mut app))?;
-            // Wait for an event that can change the screen. Do not draw again for mouse moves.
-            loop {
+            // Wait for an event that can change the screen (mouse moves do not).
+            // Then handle all the waiting events before the next draw: a fast drag or scroll does not make a queue.
+            let mut changed = false;
+            while !changed || event::poll(std::time::Duration::ZERO)? {
                 match event::read()? {
                     Event::Key(k) if k.kind == KeyEventKind::Press => app.on_key(k),
                     Event::Mouse(m) if m.kind == MouseEventKind::Moved => continue,
@@ -687,7 +699,7 @@ fn main() -> std::io::Result<()> {
                     Event::Resize(..) => {}
                     _ => continue,
                 }
-                break;
+                changed = true;
             }
         }
         Ok(())
