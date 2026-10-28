@@ -53,6 +53,8 @@ pub struct Areas {
     pub fields: Vec<Rect>,
     /// The plot area of the graph.
     pub chart: Rect,
+    /// The line style row of the graph sidebar.
+    pub style: Rect,
     pub keys: Vec<Rect>,
     /// The inner area of the palette. The first line is the query, the other lines are the list.
     pub palette: Rect,
@@ -71,8 +73,8 @@ pub struct App {
     pub unknown: usize,
     /// The formula variables that the user changed, the most recent last.
     edited: Vec<usize>,
-    /// Graph: the functions, x min, x max, y min, y max.
-    pub graph: [String; 5],
+    /// Graph: the items, then the settings of the sidebar (see `graph::SETTINGS`).
+    pub graph: [String; 9],
     /// The graph line style: an index in `graph::MARKERS`.
     pub marker: usize,
     /// The 3D view angles (yaw, pitch) in radians.
@@ -105,13 +107,10 @@ impl App {
             fin: Vec::new(),
             unknown: 0,
             edited: Vec::new(),
-            graph: [
-                "2sin(x); x^2 + y^2 = 9; x = 6".into(),
-                "-10".into(),
-                "10".into(),
-                String::new(),
-                String::new(),
-            ],
+            graph: std::array::from_fn(|i| match i {
+                0 => "2sin(x); x^2 + y^2 = 9; x = 6".into(),
+                i => graph::SETTINGS[i - 1].1.into(),
+            }),
             marker: 0,
             view: (0.6, 0.6),
             y_shown: (-1.0, 1.0),
@@ -161,7 +160,7 @@ impl App {
 
     /// The number of panes (or input fields) that can have the focus.
     fn pane_count(&self) -> usize {
-        if self.kind() == Kind::Graph { 5 } else { 3 }
+        if self.kind() == Kind::Graph { 9 } else { 3 }
     }
 
     /// The number of rows in a pane.
@@ -344,7 +343,7 @@ impl App {
                 self.focus = (self.focus + self.pane_count() - 1) % self.pane_count()
             }
             KeyCode::Up if kind == Kind::Graph => self.focus = self.focus.saturating_sub(1),
-            KeyCode::Down if kind == Kind::Graph => self.focus = (self.focus + 1).min(4),
+            KeyCode::Down if kind == Kind::Graph => self.focus = (self.focus + 1).min(8),
             KeyCode::Up => self.move_sel(self.focus, -1),
             KeyCode::Down => self.move_sel(self.focus, 1),
             KeyCode::Enter => match kind {
@@ -514,6 +513,8 @@ impl App {
             Kind::Graph => {
                 if let Some(i) = self.areas.fields.iter().position(|r| r.contains(pos)) {
                     self.focus = i;
+                } else if self.areas.style.contains(pos) {
+                    self.marker = (self.marker + 1) % graph::MARKERS.len();
                 } else if self.areas.chart.contains(pos) {
                     self.drag = Some((pos.x, pos.y));
                 }
@@ -577,7 +578,7 @@ impl App {
         let (dx, dy) = (col as f64 - c0 as f64, row as f64 - r0 as f64);
         self.drag = Some((col, row));
         if graph::is_3d(&self.graph[0]) {
-            self.view.0 -= dx * 0.08;
+            self.view.0 += dx * 0.08;
             self.view.1 = (self.view.1 + dy * 0.08).clamp(0.0, std::f64::consts::FRAC_PI_2);
             return;
         }

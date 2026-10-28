@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
 
-const ACCENT: Color = Color::Cyan;
+pub const ACCENT: Color = Color::Cyan;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let [top, body, help] = Layout::vertical([

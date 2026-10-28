@@ -134,39 +134,97 @@ fn short(v: f64) -> String {
     }
 }
 
+/// The settings in the sidebar: the label and the default text. Setting `k` is `app.graph[k + 1]`.
+pub const SETTINGS: [(&str, &str); 8] = [
+    ("x min", "-10"),
+    ("x max", "10"),
+    ("y min", ""),
+    ("y max", ""),
+    ("t min", "0"),
+    ("t max", "2pi"),
+    ("3D samples", "20"),
+    ("curve samples", "720"),
+];
+/// The sidebar row of each setting. The empty rows separate the groups.
+const SETTING_ROWS: [u16; 8] = [0, 1, 2, 3, 5, 6, 8, 9];
+const STYLE_ROW: u16 = 11;
+
+/// The value of a setting, or `default` if the text is empty or not a number.
+fn setting(app: &App, k: usize, default: f64) -> f64 {
+    calc::eval(&app.graph[k + 1], &app.ctx)
+        .ok()
+        .filter(|v| v.is_finite())
+        .unwrap_or(default)
+}
+
 pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
-    let [fields, chart_area] =
+    let [input_area, body] =
         Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
-    let field_areas: [Rect; 5] = Layout::horizontal([
-        Constraint::Fill(1),
-        Constraint::Length(10),
-        Constraint::Length(10),
-        Constraint::Length(10),
-        Constraint::Length(10),
-    ])
-    .areas(fields);
-    let titles = [
-        " f(x), equations, r = f(t), (x(t), y(t)), z = f(x, y) ",
-        " x min ",
-        " x max ",
-        " y min ",
-        " y max ",
-    ];
+    let [chart_area, sidebar] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(30)]).areas(body);
     app.areas.panes = Default::default();
     app.areas.fields.clear();
-    for (i, (r, title)) in field_areas.iter().zip(titles).enumerate() {
-        let focused = app.focus == i;
-        let line = if i >= 3 && app.graph[i].is_empty() && !focused {
-            Line::from("auto").dark_gray()
-        } else {
-            ui::input_line(&app.graph[i], focused)
+
+    // The input of the items
+    let title = " f(x), equations, r = f(t), (x(t), y(t)), z = f(x, y) ";
+    let focused = app.focus == 0;
+    let p = Paragraph::new(ui::input_line(&app.graph[0], focused)).block(ui::block(title, focused));
+    f.render_widget(p, input_area);
+    app.areas.fields.push(input_area);
+
+    // The sidebar: one row for each setting, then the line style.
+    let side_block = ui::block(" Settings ", app.focus > 0)
+        .title_bottom(Line::from(" Tab: next · Del: default ").dark_gray());
+    let inner = side_block.inner(sidebar);
+    f.render_widget(side_block, sidebar);
+    for (k, ((label, _), row)) in SETTINGS.iter().zip(SETTING_ROWS).enumerate() {
+        let i = k + 1;
+        let r = Rect {
+            y: inner.y + row,
+            height: 1,
+            ..inner
         };
-        f.render_widget(Paragraph::new(line).block(ui::block(title, focused)), *r);
-        app.areas.fields.push(*r);
+        let focused = app.focus == i;
+        let text = &app.graph[i];
+        let value = if text.is_empty() && !focused {
+            let auto = if i == 3 || i == 4 { "auto" } else { "default" };
+            Span::from(auto).dark_gray()
+        } else if text.is_empty() || calc::eval(text, &app.ctx).is_ok() {
+            Span::from(text.as_str()).bold()
+        } else {
+            Span::from(text.as_str()).red()
+        };
+        let label = Span::from(format!(" {label:<14}"));
+        let mut spans = vec![
+            if focused {
+                label.fg(ui::ACCENT).bold()
+            } else {
+                label
+            },
+            value,
+        ];
+        if focused {
+            spans.push(Span::from("█").fg(ui::ACCENT));
+        }
+        f.render_widget(Line::from(spans), r);
+        app.areas.fields.push(r);
     }
+    let r = Rect {
+        y: inner.y + STYLE_ROW,
+        height: 1,
+        ..inner
+    };
+    let style = Line::from(vec![
+        Span::from(format!(" {:<14}", "line style")),
+        Span::from(format!(" {} ", MARKERS[app.marker].1))
+            .black()
+            .on_dark_gray(),
+        Span::from(" F2").dark_gray(),
+    ]);
+    f.render_widget(style, r);
+    app.areas.style = r;
 
     let items = parse(&app.graph[0]);
-    let style = MARKERS[app.marker];
     // The title shows each item in the color of its curve.
     let mut title = vec![Span::from(" ")];
     for (i, (text, item)) in items.iter().enumerate() {
@@ -178,11 +236,7 @@ pub fn draw(f: &mut Frame, app: &mut App, area: Rect) {
         title.push(Span::from("■ ").fg(color));
         title.push(Span::from(format!("{text}   ")));
     }
-    let mut chart_block = ui::block("", false).title(Line::from(title)).title(
-        Line::from(format!(" {} (F2) ", style.1))
-            .right_aligned()
-            .dark_gray(),
-    );
+    let mut chart_block = ui::block("", false).title(Line::from(title));
     if let Some(e) = items.iter().find_map(|(_, i)| i.as_ref().err()) {
         chart_block = chart_block.title_bottom(Line::from(format!(" {e} ")).red());
     }
@@ -269,7 +323,11 @@ fn draw_2d(
     // Make the polylines (functions, polar and parametric curves) and the points (equations).
     let mut lines: Vec<(Color, Vec<Vec<Point>>)> = Vec::new();
     let mut points: Vec<(Color, Vec<(f64, f64)>)> = Vec::new();
-    let ts: Vec<f64> = (0..=720).map(|k| TAU * k as f64 / 720.0).collect();
+    let (t0, t1) = (setting(app, 4, 0.0), setting(app, 5, TAU));
+    let m = (setting(app, 7, 720.0).round() as usize).clamp(10, 100_000);
+    let ts: Vec<f64> = (0..=m)
+        .map(|k| t0 + (t1 - t0) * k as f64 / m as f64)
+        .collect();
     for (i, (_, item)) in items.iter().enumerate() {
         let Ok(item) = item else { continue };
         let color = CURVES[i % CURVES.len()];
@@ -421,7 +479,7 @@ fn draw_3d(
 ) {
     let [area, info_row] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(inner);
-    let n = 20;
+    let n = (setting(app, 6, 20.0).round() as usize).clamp(2, 200);
     let ans = app.ctx.ans;
     let z: Vec<Vec<Option<f64>>> = (0..=n)
         .map(|i| {

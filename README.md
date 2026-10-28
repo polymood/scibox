@@ -87,16 +87,27 @@ For example, the formula "dBm to watt" also converts watts to dBm.
 ### Graph tab
 
 1. Type one or more items. Use `;` between the items.
-2. Type the minimum and the maximum value of x.
-3. Type the y range, or keep the y fields empty. An empty y field gives an automatic range.
+2. Set the ranges and the samples in the "Settings" sidebar (see the table below).
 
 | Item | Examples |
 | --- | --- |
 | Function | `sin(x)`, `y = x^3 / 20` |
 | Equation in x and y | `x = 2`, `x^2 + y^2 = 9`, `y^2 = x^3 - x` |
-| Polar curve (t from 0 to 2π) | `r = 2 + cos(5t)` |
-| Parametric curve (t from 0 to 2π) | `(4cos(3t), 4sin(2t))` |
+| Polar curve | `r = 2 + cos(5t)` |
+| Parametric curve | `(4cos(3t), 4sin(2t))` |
 | 3D surface | `z = sin(x) * cos(y)` |
+
+| Setting | Function | Default |
+| --- | --- | --- |
+| x min, x max | The x range. For a 3D surface, the x range of the grid. | -10, 10 |
+| y min, y max | The y range. If a field is empty, scibox calculates the range. | auto |
+| t min, t max | The range of t for the polar and parametric curves. | 0, 2pi |
+| 3D samples | The number of grid points on each axis of a 3D surface (2 to 200). | 20 |
+| curve samples | The number of points on a polar or parametric curve (10 to 100000). | 720 |
+| line style | Click it or press F2 to change it. | solid |
+
+Press Tab to go to the next setting. Press Delete to clear a setting and use its default value.
+All the settings accept expressions, for example `2pi`.
 
 Turn the mouse wheel on the graph to zoom. Drag the graph to move it.
 For a 3D surface, drag the graph to turn the view.
