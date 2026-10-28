@@ -1,4 +1,6 @@
 //! scibox-gui: the egui version of scibox. All the logic is in `scibox-core`. This crate only shows it.
+// On Windows, a release build is a GUI program: Windows does not open a terminal window for it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod graph;
 mod look;
